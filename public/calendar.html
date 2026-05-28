@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>病房行事曆與活動行程</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <style>
+    .directory-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 14px;
+    }
+    
+    .btn-add {
+      background: linear-gradient(135deg, #a855f7, #6366f1);
+      color: white;
+      border: none;
+      padding: 10px 16px;
+      font-size: 13px;
+      font-weight: 600;
+      border-radius: 12px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      box-shadow: 0 4px 12px rgba(168, 85, 247, 0.25);
+      transition: var(--transition);
+    }
+    
+    .btn-add:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 16px rgba(168, 85, 247, 0.4);
+    }
+
+    .events-timeline {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      margin-bottom: 20px;
+      max-height: 420px;
+      overflow-y: auto;
+      padding-right: 4px;
+    }
+
+    .events-timeline::-webkit-scrollbar {
+      width: 4px;
+    }
+    .events-timeline::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 2px;
+    }
+
+    /* Date group heading */
+    .date-group {
+      margin-bottom: 8px;
+    }
+
+    .date-heading {
+      font-size: 12px;
+      font-weight: 700;
+      color: #a855f7;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .date-heading::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: linear-gradient(90deg, rgba(168, 85, 247, 0.3), transparent);
+    }
+
+    .event-card {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      padding: 14px 16px;
+      position: relative;
+      transition: var(--transition);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .event-card:hover {
+      background: rgba(255, 255, 255, 0.04);
+      border-color: rgba(168, 85, 247, 0.2);
+      transform: translateY(-1px);
+    }
+
+    /* Highlights presentation events with specialized colors */
+    .event-card.presentation {
+      border-left: 4px solid #a855f7;
+    }
+
+    .event-card.meeting-exclusion {
+      border-left: 4px solid #f43f5e;
+      background: rgba(244, 63, 94, 0.02);
+    }
+
+    .event-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: white;
+      padding-right: 32px;
+    }
+
+    .event-meta {
+      font-size: 11px;
+      color: var(--text-secondary);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .event-meta span {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .event-description {
+      font-size: 12px;
+      color: #cbd5e1;
+      line-height: 1.5;
+      margin-top: 4px;
+    }
+
+    .event-card-actions {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+    }
+
+    /* Modal Overlay Styling */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(5, 8, 16, 0.85);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+    }
+    
+    .modal-overlay.show {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    
+    .modal-card {
+      width: 90%;
+      max-width: 440px;
+      background: #111827;
+      border: 1px solid var(--border-color);
+      border-radius: 24px;
+      padding: 24px;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8);
+      transform: scale(0.9);
+      transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    
+    .modal-overlay.show .modal-card {
+      transform: scale(1);
+    }
+    
+    .modal-title {
+      font-size: 16px;
+      font-weight: 700;
+      margin-bottom: 18px;
+      color: white;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .input-field {
+      width: 100%;
+      background: rgba(10, 15, 30, 0.8);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 12px 16px;
+      color: white;
+      font-family: inherit;
+      font-size: 14px;
+      outline: none;
+      transition: var(--transition);
+      margin-bottom: 12px;
+    }
+    
+    .input-field:focus {
+      border-color: #a855f7;
+      box-shadow: 0 0 12px rgba(168, 85, 247, 0.2);
+    }
+    
+    .modal-actions {
+      display: flex;
+      gap: 12px;
+      margin-top: 20px;
+    }
+    
+    .btn-cancel {
+      flex: 1;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-color);
+      color: var(--text-secondary);
+      padding: 12px;
+      border-radius: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: var(--transition);
+    }
+
+    .btn-save-confirm {
+      flex: 1.5;
+      background: linear-gradient(135deg, #a855f7, #6366f1);
+      color: white;
+      border: none;
+      padding: 12px;
+      border-radius: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(168, 85, 247, 0.2);
+      transition: var(--transition);
+    }
+  </style>
+</head>
+<body>
+  <div class="liff-container">
+    <!-- User Badge -->
+    <div class="user-badge" id="user-badge" style="display: none;">
+      <img class="user-avatar" id="user-avatar" src="" alt="avatar">
+      <span id="user-name">載入同仁資料中...</span>
+    </div>
+
+    <!-- Header Section -->
+    <div class="header">
+      <div class="header-icon purple">📅</div>
+      <h1>病房行事曆與活動行程</h1>
+      <p>管理晨會報告排程與病房各項科內活動行程</p>
+      <div class="meta-info" id="meta-info">連線中...</div>
+    </div>
+
+    <!-- Directory Header & Add Button -->
+    <div class="directory-header">
+      <span style="font-size: 14px; font-weight: 600; color: var(--text-secondary);">行程活動列表</span>
+      <button class="btn-add" onclick="openAddModal()">
+        <span>＋</span> 手動新增行程
+      </button>
+    </div>
+
+    <!-- Events Timeline -->
+    <div class="events-timeline" id="events-list">
+      <div style="text-align: center; color: var(--text-secondary); padding: 40px;">
+        正在載入病房行程中...
+      </div>
+    </div>
+
+    <!-- Close button -->
+    <button class="btn-secondary" style="width: 100%; padding: 12px;" onclick="closeLiff()">
+      ✕ 關閉行事曆
+    </button>
+  </div>
+
+  <!-- Add Event Modal Overlay -->
+  <div class="modal-overlay" id="event-modal">
+    <div class="modal-card">
+      <div class="modal-title">
+        <span>✏️</span> 新增行程活動
+      </div>
+      
+      <div class="form-group">
+        <label class="form-label" style="font-size: 12px;">行程標題</label>
+        <input type="text" class="input-field" id="input-title" placeholder="例如：晨會個案報告、全科聚餐">
+      </div>
+
+      <div style="display: flex; gap: 12px; margin-bottom: 0;">
+        <div class="form-group" style="flex: 1.5;">
+          <label class="form-label" style="font-size: 12px;">日期</label>
+          <input type="date" class="input-field" id="input-date">
+        </div>
+        <div class="form-group" style="flex: 1;">
+          <label class="form-label" style="font-size: 12px;">時間 (選填)</label>
+          <input type="time" class="input-field" id="input-time">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" style="font-size: 12px;">地點 (選填)</label>
+        <input type="text" class="input-field" id="input-location" placeholder="例如：第二會議室">
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" style="font-size: 12px;">詳細備註 (選填)</label>
+        <input type="text" class="input-field" id="input-description" placeholder="例如：陳醫師報告 URO 案例">
+      </div>
+      
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick="closeModal()">取消</button>
+        <button class="btn-save-confirm" id="btn-save-confirm" onclick="saveEventSubmit()">確認儲存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast" id="toast-notify">
+    <div class="toast-icon" id="toast-icon"></div>
+    <span id="toast-text">更新成功！</span>
+  </div>
+
+  <!-- LINE LIFF SDK -->
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script>
+    let userName = '未知同仁';
+    let userAvatarUrl = '';
+    let groupId = 'C9f983c75e05c479be325b749e4c30004'; // Default fallback
+
+    function showToast(message, isError = false) {
+      const toast = document.getElementById('toast-notify');
+      const icon = document.getElementById('toast-icon');
+      const text = document.getElementById('toast-text');
+      
+      text.innerText = message;
+      if (isError) {
+        icon.className = 'toast-icon error';
+      } else {
+        icon.className = 'toast-icon';
+      }
+      
+      toast.classList.add('show');
+      setTimeout(() => {
+        toast.classList.remove('show');
+      }, 3000);
+    }
+
+    function parseGroupId() {
+      const urlParams = new URLSearchParams(window.location.search);
+      const queryGroupId = urlParams.get('groupId');
+      if (queryGroupId) {
+        groupId = queryGroupId;
+      }
+      try {
+        if (liff && liff.getContext() && liff.getContext().groupId) {
+          groupId = liff.getContext().groupId;
+        }
+      } catch (e) {
+        console.log("No LIFF group context", e);
+      }
+    }
+
+    // Modal Control
+    function openAddModal() {
+      document.getElementById('input-title').value = '';
+      document.getElementById('input-date').value = new Date().toISOString().split('T')[0];
+      document.getElementById('input-time').value = '08:00';
+      document.getElementById('input-location').value = '';
+      document.getElementById('input-description').value = '';
+      document.getElementById('event-modal').classList.add('show');
+    }
+
+    function closeModal() {
+      document.getElementById('event-modal').classList.remove('show');
+    }
+
+    // Initialize LIFF
+    async function initLiff() {
+      try {
+        const resConfig = await fetch('/api/config');
+        const config = await resConfig.json();
+        
+        await liff.init({ liffId: config.LIFF_CALENDAR_ID });
+        
+        if (liff.isLoggedIn()) {
+          const profile = await liff.getProfile();
+          userName = profile.displayName;
+          userAvatarUrl = profile.pictureUrl;
+          
+          document.getElementById('user-name').innerText = userName;
+          if (userAvatarUrl) {
+            document.getElementById('user-avatar').src = userAvatarUrl;
+          }
+          document.getElementById('user-badge').style.display = 'flex';
+
+          // Sync user
+          await fetch('/api/users/sync', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ lineUserId: profile.userId, displayName: userName })
+          });
+        } else {
+          console.warn("LINE LIFF not logged in.");
+          userName = "臨床同仁";
+          document.getElementById('user-name').innerText = userName;
+          document.getElementById('user-badge').style.display = 'flex';
+        }
+        
+        parseGroupId();
+        await fetchEventsList();
+      } catch (err) {
+        console.error('LIFF initialization failed', err);
+        document.getElementById('meta-info').innerText = '行事曆連線成功';
+        parseGroupId();
+        await fetchEventsList();
+      }
+    }
+
+    // Fetch Events List
+    async function fetchEventsList() {
+      try {
+        const response = await fetch(`/api/events?groupId=${groupId}`);
+        if (response.ok) {
+          const events = await response.json();
+          renderEventsList(events);
+        } else {
+          document.getElementById('events-list').innerHTML = '<div style="text-align: center; color: var(--color-rose); padding: 40px;">無法取得行事曆資料</div>';
+        }
+      } catch (error) {
+        document.getElementById('events-list').innerHTML = '<div style="text-align: center; color: var(--color-rose); padding: 40px;">連線異常</div>';
+      }
+    }
+
+    // Render Events grouped by date
+    function renderEventsList(events) {
+      const container = document.getElementById('events-list');
+      if (events.length === 0) {
+        container.innerHTML = '<div style="text-align: center; color: #64748b; padding: 40px;">目前此群組無排定行程或報告。</div>';
+        document.getElementById('meta-info').innerText = '無行程安排';
+        return;
+      }
+
+      // Group by date
+      const grouped = {};
+      events.forEach(e => {
+        if (!grouped[e.date]) {
+          grouped[e.date] = [];
+        }
+        grouped[e.date].push(e);
+      });
+
+      container.innerHTML = '';
+      
+      // Sort dates
+      const sortedDates = Object.keys(grouped).sort((a, b) => a.localeCompare(b));
+      
+      sortedDates.forEach(dateStr => {
+        const dateObj = new Date(dateStr);
+        const dayOfWeekStr = ['日', '一', '二', '三', '四', '五', '六'][dateObj.getDay()];
+        
+        let dateHtml = `
+          <div class="date-group">
+            <div class="date-heading">📅 ${dateStr} (週${dayOfWeekStr})</div>
+        `;
+        
+        grouped[dateStr].forEach(event => {
+          let cardClass = 'event-card';
+          if (event.title.includes('報告')) {
+            cardClass += ' presentation';
+          } else if (event.title.includes('院務會議') || event.title.includes('停開')) {
+            cardClass += ' meeting-exclusion';
+          }
+          
+          let metaParts = [];
+          if (event.time) {
+            metaParts.push(`<span>⏰ ${event.time}</span>`);
+          }
+          if (event.location) {
+            metaParts.push(`<span>📍 ${escapeHtml(event.location)}</span>`);
+          }
+          metaParts.push(`<span>👤 ${escapeHtml(event.created_by)}</span>`);
+          
+          dateHtml += `
+            <div class="${cardClass}" style="margin-bottom: 8px;">
+              <div class="event-title">${escapeHtml(event.title)}</div>
+              <div class="event-meta">
+                ${metaParts.join('')}
+              </div>
+              ${event.description ? `<div class="event-description">${escapeHtml(event.description)}</div>` : ''}
+              <div class="event-card-actions">
+                <button class="action-btn delete-btn" onclick="deleteEvent('${event.id}')" title="刪除行程" style="width:24px; height:24px; font-size:10px;">🗑️</button>
+              </div>
+            </div>
+          `;
+        });
+        
+        dateHtml += `</div>`;
+        container.insertAdjacentHTML('beforeend', dateHtml);
+      });
+
+      document.getElementById('meta-info').innerText = `已排定 ${events.length} 筆行程`;
+    }
+
+    // Save Event
+    async function saveEventSubmit() {
+      const title = document.getElementById('input-title').value.trim();
+      const date = document.getElementById('input-date').value;
+      const time = document.getElementById('input-time').value;
+      const location = document.getElementById('input-location').value.trim();
+      const description = document.getElementById('input-description').value.trim();
+      
+      if (!title || !date) {
+        showToast('請填寫標題與日期', true);
+        return;
+      }
+
+      const btn = document.getElementById('btn-save-confirm');
+      btn.disabled = true;
+      btn.innerText = '儲存中...';
+
+      try {
+        const response = await fetch('/api/events', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            groupId,
+            title,
+            date,
+            time,
+            location,
+            description,
+            createdBy: userName
+          })
+        });
+
+        if (response.ok) {
+          showToast('行程已成功新增！');
+          closeModal();
+          await fetchEventsList();
+        } else {
+          showToast('伺服器處理錯誤', true);
+        }
+      } catch (error) {
+        showToast('連線失敗：' + error.message, true);
+      } finally {
+        btn.disabled = false;
+        btn.innerText = '確認儲存';
+      }
+    }
+
+    // Delete Event
+    async function deleteEvent(id) {
+      if (confirm('確定要永久刪除此項行程嗎？')) {
+        try {
+          const response = await fetch(`/api/events/${id}`, {
+            method: 'DELETE'
+          });
+          if (response.ok) {
+            showToast('行程已成功刪除！');
+            await fetchEventsList();
+          } else {
+            showToast('無法刪除行程', true);
+          }
+        } catch (error) {
+          showToast('連線失敗：' + error.message, true);
+        }
+      }
+    }
+
+    function closeLiff() {
+      if (liff.isInClient()) {
+        liff.closeWindow();
+      } else {
+        alert('請在 LINE 內點選以關閉網頁。');
+      }
+    }
+
+    function escapeHtml(text) {
+      if (!text) return '';
+      return text
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    window.onload = initLiff;
+  </script>
+</body>
+</html>

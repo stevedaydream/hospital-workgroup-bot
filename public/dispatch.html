@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>今日轉發名單審查</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="liff-container">
+    <div class="header">
+      <div class="header-icon">🔍</div>
+      <h1>今日轉發名單審查</h1>
+      <p>請確認明早 07:30 分流轉發對象，AI 辨識結果已自動預填</p>
+    </div>
+
+    <!-- Image Preview from Web Server -->
+    <div class="image-preview-box">
+      <img id="case-sheet-img" src="" alt="Case Table Image">
+      <div class="image-preview-label">本日 Case 分配大表 (OCR 辨識來源)</div>
+    </div>
+
+    <div class="quick-actions">
+      <button class="btn-secondary" onclick="toggleAll(true)">✓ 全選</button>
+      <button class="btn-secondary" onclick="toggleAll(false)">✗ 取消全選</button>
+    </div>
+
+    <div class="doctor-list" id="doctor-list-container">
+      <div style="text-align: center; color: var(--text-secondary); padding: 20px;">
+        讀取群組資料中...
+      </div>
+    </div>
+
+    <button class="btn-primary" id="btn-submit" onclick="submitDispatch()">
+      <span class="spinner" id="btn-spinner"></span>
+      <span id="btn-text">確認轉發名單 (於明早 07:30 發送)</span>
+    </button>
+  </div>
+
+  <div class="toast" id="toast-notify">
+    <div class="toast-icon" id="toast-icon"></div>
+    <span id="toast-text">設定成功！</span>
+  </div>
+
+  <!-- LINE LIFF SDK -->
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script>
+    let userName = '未知同仁';
+    let liffParams = {
+      msgId: '',
+      dept: '',
+      sourceId: ''
+    };
+
+    function showToast(message, isError = false) {
+      const toast = document.getElementById('toast-notify');
+      const icon = document.getElementById('toast-icon');
+      const text = document.getElementById('toast-text');
+      
+      text.innerText = message;
+      if (isError) {
+        icon.className = 'toast-icon error';
+      } else {
+        icon.className = 'toast-icon';
+      }
+      
+      toast.classList.add('show');
+      setTimeout(() => {
+        toast.classList.remove('show');
+      }, 3000);
+    }
+
+    // Parse query params from URL
+    function parseQueryParams() {
+      const urlParams = new URLSearchParams(window.location.search);
+      liffParams.msgId = urlParams.get('msgId') || '';
+      liffParams.dept = urlParams.get('dept') || '';
+      liffParams.sourceId = urlParams.get('sourceId') || '';
+
+      if (liffParams.msgId) {
+        document.getElementById('case-sheet-img').src = `/images/${liffParams.msgId}.jpg`;
+      } else {
+        // Mock fallback image for web browser test
+        document.getElementById('case-sheet-img').src = 'https://placehold.co/600x400/0f172a/94a3b8?text=Hospital+Case+Table';
+      }
+    }
+
+    function toggleAll(checked) {
+      const checkboxes = document.querySelectorAll('.doctor-checkbox');
+      checkboxes.forEach(cb => cb.checked = checked);
+    }
+
+    // Initialize LIFF
+    async function initLiff() {
+      parseQueryParams();
+      
+      try {
+        const resConfig = await fetch('/api/config');
+        const config = await resConfig.json();
+        
+        await liff.init({ liffId: config.LIFF_DISPATCH_ID });
+        
+        if (liff.isLoggedIn()) {
+          const profile = await liff.getProfile();
+          userName = profile.displayName;
+        } else {
+          console.warn("LINE LIFF not logged in. Running in standalone browser mode.");
+        }
+        
+        await loadDoctorMappings();
+      } catch (err) {
+        console.error('LIFF initialization failed', err);
+        showToast('LIFF 初始化失敗，使用預設瀏覽器載入模式', false);
+        await loadDoctorMappings();
+      }
+    }
+
+    // Fetch ALL mappings and active cache state
+    async function loadDoctorMappings() {
+      const container = document.getElementById('doctor-list-container');
+      try {
+        // 1. Fetch ALL doctor group mappings in the hospital DB
+        const resMap = await fetch(`/api/doctor-mappings`);
+        const mappings = await resMap.json();
+
+        if (mappings.length === 0) {
+          container.innerHTML = '<div style="text-align: center; color: var(--text-secondary); padding: 20px;">無對應醫師群組資料</div>';
+          return;
+        }
+
+        // 2. Fetch current status from Daily Dispatch Cache (which target groups are in cache)
+        const resCache = await fetch(`/api/dispatch-cache?msgId=${liffParams.msgId}`);
+        const activeCaches = await resCache.json();
+        
+        // Active target groups in cache (AI identified or previously saved)
+        const activeGroupIds = activeCaches.map(c => c.target_line_group_id);
+
+        container.innerHTML = '';
+        
+        // Sort mappings so checked ones (AI identified) appear first
+        mappings.sort((a, b) => {
+          const aChecked = activeGroupIds.includes(a.line_group_id) ? 1 : 0;
+          const bChecked = activeGroupIds.includes(b.line_group_id) ? 1 : 0;
+          return bChecked - aChecked; // Checked items first
+        });
+
+        mappings.forEach(map => {
+          // Precheck logic: if it's currently in the daily dispatch cache
+          const isChecked = activeGroupIds.includes(map.line_group_id);
+          const badgeClass = map.type === 'DIRECT' ? 'type-direct' : 'type-flexible';
+
+          const itemHtml = `
+            <div class="doctor-item">
+              <div class="doctor-info">
+                <span class="doctor-name">
+                  ${escapeHtml(map.group_name)}
+                  <span class="type-badge ${badgeClass}" style="margin-left: 6px;">${map.type === 'DIRECT' ? '骨科' : '泌尿科'}</span>
+                </span>
+                <span class="doctor-group">比對金鑰: ${escapeHtml(map.match_key)}</span>
+              </div>
+              <label class="switch">
+                <input type="checkbox" class="doctor-checkbox" data-group-id="${map.line_group_id}" ${isChecked ? 'checked' : ''}>
+                <span class="slider"></span>
+              </label>
+            </div>
+          `;
+          container.insertAdjacentHTML('beforeend', itemHtml);
+        });
+
+      } catch (error) {
+        console.error('Failed to load mappings', error);
+        container.innerHTML = '<div style="text-align: center; color: var(--color-rose); padding: 20px;">讀取資料失敗</div>';
+        showToast('載入對照表失敗', true);
+      }
+    }
+
+    async function submitDispatch() {
+      const checkboxes = document.querySelectorAll('.doctor-checkbox');
+      const selectedGroups = [];
+      const unselectedGroups = [];
+
+      checkboxes.forEach(cb => {
+        const groupId = cb.getAttribute('data-group-id');
+        if (cb.checked) {
+          selectedGroups.push(groupId);
+        } else {
+          unselectedGroups.push(groupId);
+        }
+      });
+
+      const btnText = document.getElementById('btn-text');
+      const spinner = document.getElementById('btn-spinner');
+      
+      btnText.innerText = '正在儲存設定...';
+      spinner.style.display = 'inline-block';
+      document.getElementById('btn-submit').disabled = true;
+
+      try {
+        const response = await fetch('/api/dispatch-cache/confirm', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            messageId: liffParams.msgId,
+            selectedGroups,
+            unselectedGroups,
+            sourceId: liffParams.sourceId,
+            updatedBy: userName
+          })
+        });
+
+        if (response.ok) {
+          showToast('分流名單更新成功！');
+          
+          // Auto close LIFF window after a short delay
+          setTimeout(() => {
+            if (liff.isInClient()) {
+              liff.closeWindow();
+            }
+          }, 1500);
+        } else {
+          showToast('伺服器處理錯誤', true);
+        }
+      } catch (error) {
+        showToast('設定失敗：' + error.message, true);
+      } finally {
+        btnText.innerText = '確認轉發名單 (於明早 07:30 發送)';
+        spinner.style.display = 'none';
+        document.getElementById('btn-submit').disabled = false;
+      }
+    }
+
+    // Escaping helper to avoid XSS
+    function escapeHtml(text) {
+      if (!text) return '';
+      return text
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    window.onload = initLiff;
+  </script>
+</body>
+</html>

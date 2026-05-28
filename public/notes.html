@@ -1,0 +1,902 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>病房注意事項管理目錄</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <style>
+    /* Additional Styles for Directory, Filter Bar, and Modal */
+    .directory-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 14px;
+    }
+    
+    .btn-add {
+      background: linear-gradient(135deg, #10b981, #0d9488);
+      color: white;
+      border: none;
+      padding: 10px 16px;
+      font-size: 13px;
+      font-weight: 600;
+      border-radius: 12px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25);
+      transition: var(--transition);
+    }
+    
+    .btn-add:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 16px rgba(16, 185, 129, 0.4);
+    }
+    
+    /* Horizontal Filter Bar Styling */
+    .filter-bar {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding-bottom: 10px;
+      margin-bottom: 16px;
+      scrollbar-width: none; /* Hide scrollbar for Firefox */
+    }
+    
+    .filter-bar::-webkit-scrollbar {
+      display: none; /* Hide scrollbar for Chrome/Safari */
+    }
+    
+    .filter-btn {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border-color);
+      color: var(--text-secondary);
+      padding: 6px 14px;
+      border-radius: 99px;
+      font-size: 12px;
+      font-weight: 600;
+      white-space: nowrap;
+      cursor: pointer;
+      transition: var(--transition);
+    }
+    
+    .filter-btn:hover {
+      background: rgba(255, 255, 255, 0.08);
+      color: white;
+    }
+    
+    .filter-btn.active {
+      background: var(--color-teal);
+      border-color: var(--color-teal);
+      color: white;
+      box-shadow: 0 4px 12px var(--color-teal-glow);
+    }
+    
+    /* Notes List */
+    .notes-list {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      margin-bottom: 20px;
+      max-height: 400px;
+      overflow-y: auto;
+      padding-right: 4px;
+    }
+
+    .notes-list::-webkit-scrollbar {
+      width: 4px;
+    }
+    .notes-list::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 2px;
+    }
+    
+    .note-card {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      padding: 16px;
+      position: relative;
+      cursor: pointer;
+      transition: var(--transition);
+      animation: cardFadeIn 0.3s ease-out;
+    }
+    
+    @keyframes cardFadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    
+    .note-card:hover {
+      background: rgba(255, 255, 255, 0.04);
+      border-color: rgba(20, 184, 166, 0.2);
+      transform: translateY(-2px);
+    }
+    
+    .note-card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      user-select: none;
+    }
+    
+    .note-card-title-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-grow: 1;
+    }
+    
+    .collapse-icon {
+      font-size: 10px;
+      color: #14b8a6;
+      transition: transform 0.2s ease;
+      display: inline-block;
+    }
+    
+    .note-card.expanded .collapse-icon {
+      transform: rotate(90deg);
+    }
+    
+    .note-card-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: #14b8a6;
+      padding-right: 60px; /* Space for action icons */
+    }
+    
+    .note-card-body-wrapper {
+      display: grid;
+      grid-template-rows: 0fr;
+      transition: grid-template-rows 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    
+    .note-card.expanded .note-card-body-wrapper {
+      grid-template-rows: 1fr;
+    }
+    
+    .note-card-body-content {
+      overflow: hidden;
+      min-height: 0;
+    }
+    
+    .note-card-content {
+      font-size: 14px;
+      color: #e2e8f0;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      margin-top: 12px;
+      margin-bottom: 12px;
+    }
+    
+    .note-card-meta {
+      font-size: 11px;
+      color: #64748b;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-top: 1px solid rgba(255, 255, 255, 0.04);
+      padding-top: 8px;
+    }
+    
+    .note-card-actions {
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      display: flex;
+      gap: 8px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease;
+    }
+    
+    .note-card.expanded .note-card-actions {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    
+    .action-btn {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-color);
+      color: var(--text-secondary);
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      transition: var(--transition);
+    }
+    
+    .action-btn:hover {
+      color: white;
+      background: var(--color-teal);
+      border-color: var(--color-teal);
+    }
+    
+    .action-btn.delete-btn:hover {
+      background: var(--color-rose);
+      border-color: var(--color-rose);
+    }
+
+    /* Modal Styles */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(5, 8, 16, 0.85);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+    }
+    
+    .modal-overlay.show {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    
+    .modal-card {
+      width: 90%;
+      max-width: 460px;
+      background: #111827;
+      border: 1px solid var(--border-color);
+      border-radius: 24px;
+      padding: 24px;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8);
+      transform: scale(0.9);
+      transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    
+    .modal-overlay.show .modal-card {
+      transform: scale(1);
+    }
+    
+    .modal-title {
+      font-size: 17px;
+      font-weight: 700;
+      margin-bottom: 18px;
+      color: white;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    /* Category selector buttons in modal */
+    .category-selector {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 10px;
+    }
+    
+    .category-chip {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border-color);
+      color: var(--text-secondary);
+      padding: 6px 12px;
+      font-size: 11px;
+      font-weight: 600;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: var(--transition);
+    }
+    
+    .category-chip:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: white;
+    }
+    
+    .category-chip.selected {
+      background: rgba(20, 184, 166, 0.15);
+      border-color: var(--color-teal);
+      color: #14b8a6;
+      box-shadow: 0 0 8px rgba(13, 148, 136, 0.2);
+    }
+    
+    .title-input-wrapper {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    
+    .input-field {
+      width: 100%;
+      background: rgba(10, 15, 30, 0.8);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 12px 16px;
+      color: white;
+      font-family: inherit;
+      font-size: 14px;
+      outline: none;
+      transition: var(--transition);
+    }
+    
+    .title-input-wrapper .input-field {
+      margin-bottom: 0;
+    }
+    
+    .input-field:focus {
+      border-color: var(--border-active);
+      box-shadow: 0 0 12px var(--color-teal-glow);
+    }
+    
+    .btn-add-custom-cat {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border-color);
+      color: var(--text-secondary);
+      padding: 12px 14px;
+      border-radius: 12px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      white-space: nowrap;
+      transition: var(--transition);
+    }
+    
+    .btn-add-custom-cat:hover {
+      background: rgba(20, 184, 166, 0.1);
+      border-color: var(--color-teal);
+      color: #14b8a6;
+    }
+    
+    .textarea-field {
+      height: 160px;
+      resize: none;
+      width: 100%;
+      margin-bottom: 16px;
+    }
+    
+    .modal-actions {
+      display: flex;
+      gap: 12px;
+      margin-top: 20px;
+    }
+    
+    .btn-cancel {
+      flex: 1;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-color);
+      color: var(--text-secondary);
+      padding: 12px;
+      border-radius: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: var(--transition);
+    }
+    
+    .btn-cancel:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: white;
+    }
+
+    .btn-save-confirm {
+      flex: 1.5;
+      background: linear-gradient(135deg, var(--color-teal), var(--color-blue));
+      color: white;
+      border: none;
+      padding: 12px;
+      border-radius: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: 0 4px 12px var(--color-teal-glow);
+      transition: var(--transition);
+    }
+    
+    .btn-save-confirm:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 16px rgba(13, 148, 136, 0.5);
+    }
+  </style>
+</head>
+<body>
+  <div class="liff-container">
+    <!-- User identity Badge at the very top -->
+    <div class="user-badge" id="user-badge" style="display: none;">
+      <img class="user-avatar" id="user-avatar" src="" alt="avatar">
+      <span id="user-name">載入同仁資料中...</span>
+    </div>
+
+    <!-- Header Section -->
+    <div class="header">
+      <div class="header-icon">📋</div>
+      <h1>注意事項管理目錄</h1>
+      <p>可透過篩選器過濾類別，點擊卡片編輯或刪除</p>
+      <div class="meta-info" id="meta-info">
+        連線中...
+      </div>
+    </div>
+
+    <!-- Directory Header & Add Button -->
+    <div class="directory-header">
+      <span style="font-size: 14px; font-weight: 600; color: var(--text-secondary);">公告項目列表</span>
+      <button class="btn-add" onclick="openAddModal()">
+        <span>＋</span> 新增公告項目
+      </button>
+    </div>
+
+    <!-- Horizontal Category Filter Bar -->
+    <div class="filter-bar" id="filter-bar">
+      <!-- Generated dynamically -->
+      <button class="filter-btn active" id="filter-all" onclick="filterNotes('ALL')">全部</button>
+    </div>
+
+    <!-- Notice Items List Container -->
+    <div class="notes-list" id="notes-list">
+      <div style="text-align: center; color: var(--text-secondary); padding: 40px;">
+        正在載入病房注意事項...
+      </div>
+    </div>
+
+    <!-- Close LIFF Window Button -->
+    <button class="btn-secondary" style="width: 100%; padding: 12px;" onclick="closeLiff()">
+      ✕ 關閉視窗
+    </button>
+  </div>
+
+  <!-- Add/Edit Notice Modal Overlay -->
+  <div class="modal-overlay" id="note-modal">
+    <div class="modal-card">
+      <div class="modal-title" id="modal-title-text">
+        <span>✏️</span> 編輯公告項目
+      </div>
+      
+      <div class="form-group" style="margin-bottom: 12px;">
+        <label class="form-label">選擇快捷標題類別</label>
+        <div class="category-selector" id="modal-category-selector">
+          <!-- Chips generated dynamically -->
+        </div>
+      </div>
+      
+      <div class="form-group">
+        <label class="form-label">公告標題 (可手動修改或點選快捷選單)</label>
+        <div class="title-input-wrapper">
+          <input type="text" class="input-field" id="input-title" placeholder="例如：會診、藥物、手術、檢查" oninput="checkCustomTitle()">
+          <button class="btn-add-custom-cat" id="btn-save-cat" style="display: none;" onclick="addNewCategoryFromInput()" title="將此自訂標題加入快捷選單">
+            ＋ 新增至選單
+          </button>
+        </div>
+      </div>
+      
+      <div class="form-group">
+        <label class="form-label">公告內容</label>
+        <textarea class="input-field textarea-field" id="input-content" placeholder="請直接輸入注意事項內容，同仁可一目了然..."></textarea>
+      </div>
+      
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick="closeModal()">取消</button>
+        <button class="btn-save-confirm" id="btn-save-confirm" onclick="saveNoteSubmit()">確認儲存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div class="toast" id="toast-notify">
+    <div class="toast-icon" id="toast-icon"></div>
+    <span id="toast-text">更新成功！</span>
+  </div>
+
+  <!-- LINE LIFF SDK -->
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script>
+    let userName = '未知同仁';
+    let userAvatarUrl = '';
+    let currentEditId = null; 
+    let allNotes = []; // Stores all fetched notes locally to perform client-side filtering
+    let currentFilter = 'ALL';
+    let expandedNoteIds = new Set();
+    
+    // Category list persistence in localStorage
+    const defaultCategories = ['會診', '藥物', '手術', '檢查', '其他'];
+    let categories = JSON.parse(localStorage.getItem('note_categories')) || defaultCategories;
+
+    function showToast(message, isError = false) {
+      const toast = document.getElementById('toast-notify');
+      const icon = document.getElementById('toast-icon');
+      const text = document.getElementById('toast-text');
+      
+      text.innerText = message;
+      if (isError) {
+        icon.className = 'toast-icon error';
+      } else {
+        icon.className = 'toast-icon';
+      }
+      
+      toast.classList.add('show');
+      setTimeout(() => {
+        toast.classList.remove('show');
+      }, 3000);
+    }
+
+    // Render Filter Bar and Modal Title Buttons
+    function renderCategoryUI() {
+      // 1. Render Main Directory Filter Bar
+      const filterBar = document.getElementById('filter-bar');
+      filterBar.innerHTML = `<button class="filter-btn ${currentFilter === 'ALL' ? 'active' : ''}" id="filter-all" onclick="filterNotes('ALL')">全部</button>`;
+      
+      categories.forEach(cat => {
+        const activeClass = currentFilter === cat ? 'active' : '';
+        filterBar.insertAdjacentHTML('beforeend', `
+          <button class="filter-btn ${activeClass}" onclick="filterNotes('${cat}')">${escapeHtml(cat)}</button>
+        `);
+      });
+      
+      // 2. Render Modal Categories Quick Select
+      const modalSelector = document.getElementById('modal-category-selector');
+      modalSelector.innerHTML = '';
+      
+      categories.forEach(cat => {
+        modalSelector.insertAdjacentHTML('beforeend', `
+          <button class="category-chip" id="chip-${cat}" onclick="selectCategoryChip('${cat}')">${escapeHtml(cat)}</button>
+        `);
+      });
+    }
+
+    function selectCategoryChip(cat) {
+      // Unselect all other chips
+      const chips = document.querySelectorAll('.category-chip');
+      chips.forEach(c => c.classList.remove('selected'));
+      
+      // Select clicked chip
+      const selectedChip = document.getElementById(`chip-${cat}`);
+      if (selectedChip) selectedChip.classList.add('selected');
+      
+      // Set input value
+      document.getElementById('input-title').value = cat;
+      document.getElementById('btn-save-cat').style.display = 'none'; // Predefined, hide button
+    }
+
+    function checkCustomTitle() {
+      const titleInput = document.getElementById('input-title').value.trim();
+      const saveCatBtn = document.getElementById('btn-save-cat');
+      
+      // Highlight matching chip if it matches typed text
+      const chips = document.querySelectorAll('.category-chip');
+      chips.forEach(c => c.classList.remove('selected'));
+      
+      if (!titleInput) {
+        saveCatBtn.style.display = 'none';
+        return;
+      }
+      
+      const matchedCat = categories.find(c => c === titleInput);
+      if (matchedCat) {
+        const matchedChip = document.getElementById(`chip-${matchedCat}`);
+        if (matchedChip) matchedChip.classList.add('selected');
+        saveCatBtn.style.display = 'none';
+      } else {
+        // It's a custom category! Display the "Add to quick menu" button
+        saveCatBtn.style.display = 'block';
+      }
+    }
+
+    function addNewCategoryFromInput() {
+      const titleInput = document.getElementById('input-title').value.trim();
+      if (titleInput && !categories.includes(titleInput)) {
+        categories.push(titleInput);
+        localStorage.setItem('note_categories', JSON.stringify(categories));
+        renderCategoryUI();
+        
+        // Select newly added category
+        selectCategoryChip(titleInput);
+        showToast(`已將「${titleInput}」新增至快捷選單！`);
+      }
+    }
+
+    // Modal Control
+    function openAddModal() {
+      currentEditId = null;
+      document.getElementById('modal-title-text').innerHTML = '<span>＋</span> 新增公告項目';
+      document.getElementById('input-title').value = '';
+      document.getElementById('input-content').value = '';
+      document.getElementById('btn-save-cat').style.display = 'none';
+      
+      // Unselect all chips
+      const chips = document.querySelectorAll('.category-chip');
+      chips.forEach(c => c.classList.remove('selected'));
+      
+      document.getElementById('note-modal').classList.add('show');
+    }
+
+    async function openEditModal(id) {
+      currentEditId = id;
+      document.getElementById('modal-title-text').innerHTML = '<span>✏️</span> 編輯公告項目';
+      document.getElementById('btn-save-cat').style.display = 'none';
+      
+      // Fetch details from API
+      try {
+        const res = await fetch(`/api/notes/${id}`);
+        if (res.ok) {
+          const note = await res.json();
+          document.getElementById('input-title').value = note.title;
+          document.getElementById('input-content').value = note.content;
+          
+          // Select chip if title matches any category
+          const chips = document.querySelectorAll('.category-chip');
+          chips.forEach(c => c.classList.remove('selected'));
+          
+          const matchedCat = categories.find(c => c === note.title);
+          if (matchedCat) {
+            const matchedChip = document.getElementById(`chip-${matchedCat}`);
+            if (matchedChip) matchedChip.classList.add('selected');
+          }
+          
+          document.getElementById('note-modal').classList.add('show');
+        } else {
+          showToast('無法取得公告詳細內容', true);
+        }
+      } catch (error) {
+        showToast('載入公告失敗：' + error.message, true);
+      }
+    }
+
+    function closeModal() {
+      document.getElementById('note-modal').classList.remove('show');
+    }
+
+    // Initialize LIFF
+    async function initLiff() {
+      renderCategoryUI();
+      
+      try {
+        const resConfig = await fetch('/api/config');
+        const config = await resConfig.json();
+        
+        await liff.init({ liffId: config.LIFF_NOTES_ID });
+        
+        if (liff.isLoggedIn()) {
+          const profile = await liff.getProfile();
+          userName = profile.displayName;
+          userAvatarUrl = profile.pictureUrl;
+          
+          document.getElementById('user-name').innerText = userName;
+          if (userAvatarUrl) {
+            document.getElementById('user-avatar').src = userAvatarUrl;
+          } else {
+            document.getElementById('user-avatar').src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%2314b8a6"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/></svg>';
+          }
+          document.getElementById('user-badge').style.display = 'flex';
+          
+          // Sync user profile
+          await fetch('/api/users/sync', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ lineUserId: profile.userId, displayName: userName })
+          });
+        } else {
+          console.warn("LINE LIFF not logged in. Running in standalone browser mode.");
+          userName = "臨床測試人員";
+          document.getElementById('user-name').innerText = userName;
+          document.getElementById('user-avatar').src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%2364748b"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/></svg>';
+          document.getElementById('user-badge').style.display = 'flex';
+        }
+
+        await fetchNotesList();
+      } catch (err) {
+        console.error('LIFF initialization failed', err);
+        document.getElementById('meta-info').innerText = '連線失敗，建議於 LINE 內打開。';
+        await fetchNotesList(); 
+      }
+    }
+
+    // Load Notices List
+    async function fetchNotesList() {
+      try {
+        const response = await fetch('/api/notes');
+        if (response.ok) {
+          allNotes = await response.json();
+          renderNotesList();
+        } else {
+          document.getElementById('notes-list').innerHTML = '<div style="text-align: center; color: var(--color-rose); padding: 45px;">無法從伺服器取得資料</div>';
+        }
+      } catch (error) {
+        document.getElementById('notes-list').innerHTML = '<div style="text-align: center; color: var(--color-rose); padding: 45px;">連線異常</div>';
+        console.error(error);
+      }
+    }
+
+    // Client-side category filtering
+    function filterNotes(category) {
+      currentFilter = category;
+      
+      // Update Filter Bar Buttons
+      const filterBtns = document.querySelectorAll('.filter-btn');
+      filterBtns.forEach(btn => btn.classList.remove('active'));
+      
+      // Set active state on correct button
+      const filterAll = document.getElementById('filter-all');
+      if (category === 'ALL') {
+        filterAll.classList.add('active');
+      } else {
+        // Find matching filter button and activate it
+        const targetBtn = Array.from(filterBtns).find(btn => btn.innerText === category);
+        if (targetBtn) targetBtn.classList.add('active');
+      }
+      
+      renderNotesList();
+    }
+
+    // Render list based on local cache and current filter
+    function renderNotesList() {
+      const container = document.getElementById('notes-list');
+      
+      // Apply Filter
+      let filtered = allNotes;
+      if (currentFilter !== 'ALL') {
+        if (currentFilter === '其他') {
+          // '其他' shows notes whose title is either exactly '其他' OR doesn't match any of the other default predefined categories
+          filtered = allNotes.filter(n => {
+            const hasMatch = defaultCategories.slice(0, 4).some(cat => n.title.includes(cat)); // matches 會診, 藥物, 手術, 檢查
+            return !hasMatch;
+          });
+        } else {
+          // Regular filter: matches title content (contains or equals)
+          filtered = allNotes.filter(n => n.title.includes(currentFilter));
+        }
+      }
+
+      if (filtered.length === 0) {
+        container.innerHTML = '<div style="text-align: center; color: #64748b; padding: 40px;">目前尚無符合此篩選類別的公告。</div>';
+        document.getElementById('meta-info').innerText = '尚無此類別內容';
+        return;
+      }
+
+      container.innerHTML = '';
+      filtered.forEach(note => {
+        const dateStr = new Date(note.updated_at).toLocaleString('zh-TW', { hour12: false });
+        const isExpanded = expandedNoteIds.has(String(note.id));
+        const cardClass = isExpanded ? 'note-card expanded' : 'note-card';
+        
+        const cardHtml = `
+          <div class="${cardClass}" id="note-card-${note.id}" onclick="toggleNote('${note.id}')">
+            <div class="note-card-header">
+              <div class="note-card-title-group">
+                <span class="collapse-icon">▶</span>
+                <span class="note-card-title">${escapeHtml(note.title)}</span>
+              </div>
+            </div>
+            <div class="note-card-body-wrapper">
+              <div class="note-card-body-content">
+                <div class="note-card-content">${escapeHtml(note.content)}</div>
+                <div class="note-card-meta">
+                  <span>👤 更新者：${escapeHtml(note.updated_by)}</span>
+                  <span>🕒 更新時間：${dateStr}</span>
+                </div>
+              </div>
+            </div>
+            <div class="note-card-actions">
+              <button class="action-btn" onclick="event.stopPropagation(); openEditModal('${note.id}')" title="編輯">✏️</button>
+              <button class="action-btn delete-btn" onclick="event.stopPropagation(); deleteNote('${note.id}')" title="刪除">🗑️</button>
+            </div>
+          </div>
+        `;
+        container.insertAdjacentHTML('beforeend', cardHtml);
+      });
+      
+      document.getElementById('meta-info').innerText = `已顯示 ${filtered.length} 筆公告項目`;
+    }
+
+    function toggleNote(id) {
+      const card = document.getElementById(`note-card-${id}`);
+      if (!card) return;
+      const strId = String(id);
+      if (expandedNoteIds.has(strId)) {
+        expandedNoteIds.delete(strId);
+        card.classList.remove('expanded');
+      } else {
+        expandedNoteIds.add(strId);
+        card.classList.add('expanded');
+      }
+    }
+
+    // Create or Edit Submit
+    async function saveNoteSubmit() {
+      const title = document.getElementById('input-title').value.trim();
+      const content = document.getElementById('input-content').value.trim();
+      
+      if (!title || !content) {
+        showToast('請填寫標題與內容', true);
+        return;
+      }
+
+      // If the user entered a custom title but did not click "+新增至選單", auto-save it to selection chips for convenience
+      if (title && !categories.includes(title)) {
+        categories.push(title);
+        localStorage.setItem('note_categories', JSON.stringify(categories));
+        renderCategoryUI();
+      }
+
+      const btn = document.getElementById('btn-save-confirm');
+      btn.disabled = true;
+      btn.innerText = '儲存中...';
+
+      try {
+        let response;
+        if (currentEditId === null) {
+          // CREATE (POST)
+          response = await fetch('/api/notes', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title, content, updatedBy: userName })
+          });
+        } else {
+          // UPDATE (PUT)
+          response = await fetch(`/api/notes/${currentEditId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title, content, updatedBy: userName })
+          });
+        }
+
+        if (response.ok) {
+          showToast(currentEditId === null ? '公告已成功新增！' : '公告已成功修改！');
+          closeModal();
+          await fetchNotesList();
+        } else {
+          showToast('伺服器處理錯誤', true);
+        }
+      } catch (error) {
+        showToast('連線失敗：' + error.message, true);
+      } finally {
+        btn.disabled = false;
+        btn.innerText = '確認儲存';
+      }
+    }
+
+    // Delete notice
+    async function deleteNote(id) {
+      if (confirm('確定要永久刪除此項公告嗎？刪除後無法還原。')) {
+        try {
+          const response = await fetch(`/api/notes/${id}`, {
+            method: 'DELETE'
+          });
+          if (response.ok) {
+            expandedNoteIds.delete(String(id));
+            showToast('公告已成功刪除！');
+            await fetchNotesList();
+          } else {
+            showToast('無法刪除公告', true);
+          }
+        } catch (error) {
+          showToast('連線失敗：' + error.message, true);
+        }
+      }
+    }
+
+    // Close LIFF
+    function closeLiff() {
+      if (liff.isInClient()) {
+        liff.closeWindow();
+      } else {
+        alert('請在 LINE 內點選以關閉網頁。');
+      }
+    }
+
+    // Escaping helper to avoid XSS
+    function escapeHtml(text) {
+      if (!text) return '';
+      return text
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    window.onload = initLiff;
+  </script>
+</body>
+</html>

@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>醫院工作助手 ID 與對照管理後台</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <!-- Flatpickr Multiple Date Picker CDN -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/themes/dark.css">
+  <style>
+    /* Additional dashboard styles */
+    .admin-section {
+      margin-bottom: 28px;
+    }
+    
+    .section-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: #14b8a6;
+      margin-bottom: 12px;
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    
+    .mapping-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+      margin-bottom: 16px;
+      max-height: 280px;
+      overflow-y: auto;
+      padding-right: 4px;
+    }
+    
+    .mapping-card {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--border-color);
+      border-radius: 14px;
+      padding: 12px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: relative;
+      transition: var(--transition);
+    }
+    
+    .mapping-card:hover {
+      background: rgba(255, 255, 255, 0.05);
+      border-color: rgba(20, 184, 166, 0.2);
+    }
+    
+    .mapping-details {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      padding-right: 40px;
+    }
+    
+    .mapping-main {
+      font-size: 14px;
+      font-weight: 600;
+    }
+    
+    .mapping-sub {
+      font-size: 11px;
+      color: var(--text-secondary);
+      font-family: monospace;
+      word-break: break-all;
+    }
+    
+
+    
+    /* User Table List */
+    .user-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 180px;
+      overflow-y: auto;
+    }
+    
+    .user-item {
+      background: rgba(255, 255, 255, 0.01);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      padding: 8px 12px;
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    
+    /* Form Dropdown select styling */
+    select.input-field {
+      appearance: none;
+      -webkit-appearance: none;
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' fill='%2394a3b8'><path d='M7 10l5 5 5-5z'/></svg>");
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+      cursor: pointer;
+    }
+    
+    .modal-actions {
+      display: flex;
+      gap: 12px;
+    }
+    .tag {
+      background: rgba(244, 63, 94, 0.15);
+      color: #fb7185;
+      border: 1px solid rgba(244, 63, 94, 0.3);
+      padding: 6px 10px;
+      border-radius: 8px;
+      font-size: 12px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-family: monospace;
+    }
+    .tag-close {
+      cursor: pointer;
+      color: #fb7185;
+      font-weight: bold;
+      transition: var(--transition);
+    }
+    .tag-close:hover {
+      color: #f43f5e;
+    }
+  </style>
+</head>
+<body>
+  <div class="liff-container" style="max-width: 550px;">
+    <!-- User Badge -->
+    <div class="user-badge" id="user-badge" style="display: none;">
+      <img class="user-avatar" id="user-avatar" src="" alt="avatar">
+      <span id="user-name">載入管理者資料中...</span>
+    </div>
+
+    <!-- Header -->
+    <div class="header">
+      <div class="header-icon rose">⚙️</div>
+      <h1>ID 與科別對照管理後台</h1>
+      <p>管理醫師姓名/科別代號與 LINE 群組的綁定對照關係</p>
+      <div class="meta-info" id="meta-info">載入中...</div>
+    </div>
+
+    <!-- Tabs Header -->
+    <div class="tabs-header" style="display: flex; gap: 8px; margin-bottom: 20px; border-bottom: 1px solid var(--border-color); padding-bottom: 8px;">
+      <button class="filter-btn active" id="tab-mappings-btn" onclick="switchTab('mappings')" style="flex: 1; border-radius: 12px; padding: 10px; font-weight: bold;">科別對照對應表</button>
+      <button class="filter-btn" id="tab-rotations-btn" onclick="switchTab('rotations')" style="flex: 1; border-radius: 12px; padding: 10px; font-weight: bold;">晨會報告輪序</button>
+    </div>
+
+    <!-- Mappings Tab Content -->
+    <div id="tab-mappings" class="tab-content">
+      <!-- Section: Existing Mappings -->
+      <div class="admin-section">
+        <div class="section-title">
+          <span>📋</span> 現有對照對應表 (Doctor-Group Mappings)
+        </div>
+        <div class="mapping-grid" id="mapping-list">
+          <div style="text-align: center; color: var(--text-secondary); padding: 20px;">
+            讀取對照資料中...
+          </div>
+        </div>
+      </div>
+
+      <!-- Section: Add New Mapping Form -->
+      <div class="admin-section">
+        <div class="section-title">
+          <span>＋</span> 新增對照設定項目
+        </div>
+        
+        <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-color); padding: 16px; border-radius: 16px;">
+          <div class="form-group">
+            <label class="form-label" style="font-size: 12px;">比對關鍵字 (Match Key)</label>
+            <input type="text" class="input-field" id="input-match-key" placeholder="例如：陳鍾沛 (姓名) 或 URO (科別代碼)" style="padding: 10px 14px; font-size: 13px;">
+          </div>
+          
+          <div class="form-group">
+            <label class="form-label" style="font-size: 12px;">臨床群組名稱 (Group Name)</label>
+            <input type="text" class="input-field" id="input-group-name" placeholder="例如：大樹骨群、王彥傑醫師群" style="padding: 10px 14px; font-size: 13px;">
+          </div>
+          
+          <div class="form-group">
+            <label class="form-label" style="font-size: 12px;">LINE 群組 ID (G開頭)</label>
+            <input type="text" class="input-field" id="input-line-group-id" placeholder="例如：G12345abcdef... (可由群組內打 ID 獲得)" style="padding: 10px 14px; font-size: 13px;">
+          </div>
+          
+          <div class="form-group">
+            <label class="form-label" style="font-size: 12px;">對應分流類型 (Mapping Type)</label>
+            <select class="input-field" id="input-mapping-type" style="padding: 10px 14px; font-size: 13px;">
+              <option value="DIRECT">DIRECT (單一醫師直對 - 骨科模式)</option>
+              <option value="FLEXIBLE">FLEXIBLE (一對多模糊科別 - 泌尿科模式)</option>
+            </select>
+          </div>
+          
+          <button class="btn-primary" id="btn-add-submit" onclick="addMapping()" style="padding: 12px; font-size: 14px;">
+            確認新增對照設定
+          </button>
+        </div>
+      </div>
+
+      <!-- Section: Registered Users -->
+      <div class="admin-section">
+        <div class="section-title">
+          <span>👤</span> 已開通 LINE LIFF 授權同仁清單
+        </div>
+        <div class="user-list" id="users-list">
+          <div style="text-align: center; color: var(--text-secondary); padding: 15px;">
+            讀取人員清單中...
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Rotations Tab Content -->
+    <div id="tab-rotations" class="tab-content" style="display: none;">
+      <!-- Section: Rotation Configuration -->
+      <div class="admin-section">
+        <div class="section-title">
+          <span>📋</span> 晨會報告輪序配置 (NP & Doctor Rotations)
+        </div>
+        <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-color); padding: 16px; border-radius: 16px; margin-bottom: 16px;">
+          <div class="form-group">
+            <label class="form-label" style="font-size: 12px;">主治醫師輪序名單 (每行輸入一人，按輪序排列，可分組如 [Ortho])</label>
+            <textarea class="input-field" id="input-doctors-list" placeholder="[Ortho]&#10;陳鍾沛&#10;鄧明紘&#10;劉哲瑋&#10;原永健&#10;&#10;[Uro]&#10;蔡尚憲&#10;陳樞鴻" style="height: 100px; resize: none; padding: 10px 14px; font-size: 13px;"></textarea>
+          </div>
+          <div class="form-group">
+            <label class="form-label" style="font-size: 12px;">專科護理師 (NP) 輪序名單 (每行輸入一人，按輪序排列，可分組如 [9A])</label>
+            <textarea class="input-field" id="input-nps-list" placeholder="[9A]&#10;黃郁芳&#10;詹絲庭&#10;王子建&#10;&#10;[9B]&#10;林小嫻" style="height: 100px; resize: none; padding: 10px 14px; font-size: 13px;"></textarea>
+          </div>
+          <div class="form-row" style="margin-bottom: 0;">
+            <div class="form-group" style="flex: 1;">
+              <label class="form-label" style="font-size: 12px;">科別輪替順序 (以逗號隔開)</label>
+              <input type="text" class="input-field" id="input-dept-sequence" placeholder="Plasty, Uro, Ortho" style="padding: 10px 14px; font-size: 13px;">
+            </div>
+            <div class="form-group" style="flex: 1;">
+              <label class="form-label" style="font-size: 12px;">病房輪替順序 (以逗號隔開)</label>
+              <input type="text" class="input-field" id="input-ward-sequence" placeholder="9A, 9B, 8A" style="padding: 10px 14px; font-size: 13px;">
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label" style="font-size: 12px;">排除會議日期 (例：院務會議/假日，可點擊日曆多選)</label>
+            <input type="text" class="input-field" id="picker-exclusion-date" placeholder="點擊選取多個排除日期..." style="padding: 10px 14px; font-size: 13px; cursor: pointer;">
+            <div id="exclusions-tags-container" style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px;"></div>
+          </div>
+          
+          <button class="btn-primary" id="btn-save-rotations" onclick="saveRotations()" style="padding: 12px; font-size: 14px;">
+            儲存輪序與排除配置
+          </button>
+        </div>
+      </div>
+
+      <!-- Section: Schedule Generator -->
+      <div class="admin-section">
+        <div class="section-title">
+          <span>📅</span> 自動排程產生器 (Thursday Scheduler)
+        </div>
+        <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-color); padding: 16px; border-radius: 16px;">
+          <div class="form-row" style="margin-bottom: 12px;">
+            <div class="form-group" style="flex: 1; margin-bottom: 0;">
+              <label class="form-label" style="font-size: 11px;">開始日期</label>
+              <input type="date" class="input-field" id="input-start-date" style="padding: 8px 12px; font-size: 12px;">
+            </div>
+            <div class="form-group" style="flex: 1; margin-bottom: 0;">
+              <label class="form-label" style="font-size: 11px;">結束日期</label>
+              <input type="date" class="input-field" id="input-end-date" style="padding: 8px 12px; font-size: 12px;">
+            </div>
+          </div>
+          <div class="form-row" style="margin-bottom: 12px;">
+            <div class="form-group" style="flex: 1; margin-bottom: 0;">
+              <label class="form-label" style="font-size: 11px;">起始負責科別 (選填)</label>
+              <select class="input-field" id="select-start-dept" style="padding: 8px 12px; font-size: 12px;"></select>
+            </div>
+            <div class="form-group" style="flex: 1; margin-bottom: 0;">
+              <label class="form-label" style="font-size: 11px;">起始負責病房 (選填)</label>
+              <select class="input-field" id="select-start-ward" style="padding: 8px 12px; font-size: 12px;"></select>
+            </div>
+          </div>
+          <button class="btn-primary" id="btn-generate-rotations" onclick="generateRotations()" style="padding: 12px; font-size: 14px; background: linear-gradient(135deg, var(--color-teal), var(--color-blue));">
+            產生報告輪序行程
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Close button -->
+    <button class="btn-secondary" style="width: 100%; padding: 12px; margin-top: 10px;" onclick="closeLiff()">
+      ✕ 關閉管理後台
+    </button>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast" id="toast-notify">
+    <div class="toast-icon" id="toast-icon"></div>
+    <span id="toast-text">設定成功！</span>
+  </div>
+
+  <!-- Flatpickr JS CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+  <!-- LINE LIFF SDK -->
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script>
+    let userName = '未知管理員';
+    let userAvatarUrl = '';
+
+    function showToast(message, isError = false) {
+      const toast = document.getElementById('toast-notify');
+      const icon = document.getElementById('toast-icon');
+      const text = document.getElementById('toast-text');
+      
+      text.innerText = message;
+      if (isError) {
+        icon.className = 'toast-icon error';
+      } else {
+        icon.className = 'toast-icon';
+      }
+      
+      toast.classList.add('show');
+      setTimeout(() => {
+        toast.classList.remove('show');
+      }, 3000);
+    }
+
+    // Initialize LIFF
+    async function initLiff() {
+      initFlatpickr();
+      // Listen to sequence changes to update start selects dynamically
+      document.getElementById('input-dept-sequence').addEventListener('input', updateStartSelects);
+      document.getElementById('input-ward-sequence').addEventListener('input', updateStartSelects);
+      try {
+        const resConfig = await fetch('/api/config');
+        const config = await resConfig.json();
+        
+        await liff.init({ liffId: config.LIFF_ADMIN_ID }); // Use dedicated admin LIFF ID
+        
+        if (liff.isLoggedIn()) {
+          const profile = await liff.getProfile();
+          userName = profile.displayName;
+          userAvatarUrl = profile.pictureUrl;
+          
+          document.getElementById('user-name').innerText = userName + ' (管理員)';
+          if (userAvatarUrl) {
+            document.getElementById('user-avatar').src = userAvatarUrl;
+          }
+          document.getElementById('user-badge').style.display = 'flex';
+        } else {
+          console.warn("LINE LIFF not logged in. Standalone browser mode.");
+        }
+        
+        await loadMappings();
+        await loadUsers();
+        await loadRotations();
+      } catch (err) {
+        console.error('LIFF initialization failed', err);
+        document.getElementById('meta-info').innerText = '管理端連線正常';
+        await loadMappings();
+        await loadUsers();
+        await loadRotations();
+      }
+    }
+
+    // Load Mappings
+    async function loadMappings() {
+      const container = document.getElementById('mapping-list');
+      try {
+        const response = await fetch('/api/doctor-mappings');
+        if (response.ok) {
+          const mappings = await response.json();
+          if (mappings.length === 0) {
+            container.innerHTML = '<div style="text-align: center; color: var(--text-secondary); padding: 20px;">目前尚無任何對照設定項目</div>';
+            return;
+          }
+          
+          container.innerHTML = '';
+          mappings.forEach(map => {
+            const badgeClass = map.type === 'DIRECT' ? 'type-direct' : 'type-flexible';
+            
+            const cardHtml = `
+              <div class="mapping-card">
+                <div class="mapping-details">
+                  <div class="mapping-main">
+                    ${escapeHtml(map.match_key)} ➔ ${escapeHtml(map.group_name)}
+                    <span class="type-badge ${badgeClass}">${map.type}</span>
+                  </div>
+                  <div class="mapping-sub">${escapeHtml(map.line_group_id)}</div>
+                </div>
+                <div class="note-card-actions" style="top:50%; transform:translateY(-50%); right: 16px;">
+                  <button class="action-btn delete-btn" onclick="deleteMapping('${map.id}')" title="刪除此對照">🗑️</button>
+                </div>
+              </div>
+            `;
+            container.insertAdjacentHTML('beforeend', cardHtml);
+          });
+          document.getElementById('meta-info').innerText = `已載入 ${mappings.length} 筆對照設定`;
+        } else {
+          container.innerHTML = '<div style="text-align: center; color: var(--color-rose); padding: 20px;">無法從伺服器取得對照資料</div>';
+        }
+      } catch (error) {
+        container.innerHTML = '<div style="text-align: center; color: var(--color-rose); padding: 20px;">連線異常</div>';
+      }
+    }
+
+    // Load Users
+    async function loadUsers() {
+      const container = document.getElementById('users-list');
+      try {
+        const response = await fetch('/api/users');
+        if (response.ok) {
+          const users = await response.json();
+          if (users.length === 0) {
+            container.innerHTML = '<div style="text-align: center; color: var(--text-secondary); padding: 15px;">尚無同仁開通登入過。</div>';
+            return;
+          }
+          
+          container.innerHTML = '';
+          users.forEach(u => {
+            container.insertAdjacentHTML('beforeend', `
+              <div class="user-item">
+                <span><b>${escapeHtml(u.display_name)}</b></span>
+                <span style="font-family: monospace; font-size: 10px; color: var(--text-secondary);">${escapeHtml(u.line_user_id)}</span>
+              </div>
+            `);
+          });
+        }
+      } catch (error) {
+        container.innerHTML = '<div style="text-align: center; color: var(--color-rose); padding: 15px;">載入人員失敗</div>';
+      }
+    }
+
+    // Add mapping
+    async function addMapping() {
+      const matchKey = document.getElementById('input-match-key').value.trim();
+      const groupName = document.getElementById('input-group-name').value.trim();
+      const lineGroupId = document.getElementById('input-line-group-id').value.trim();
+      const type = document.getElementById('input-mapping-type').value;
+      
+      if (!matchKey || !groupName || !lineGroupId) {
+        showToast('請填寫所有欄位', true);
+        return;
+      }
+      
+      const btn = document.getElementById('btn-add-submit');
+      btn.disabled = true;
+      btn.innerText = '新增中...';
+      
+      try {
+        const response = await fetch('/api/doctor-mappings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ matchKey, groupName, lineGroupId, type })
+        });
+        
+        if (response.ok) {
+          showToast('對照設定項目新增成功！');
+          document.getElementById('input-match-key').value = '';
+          document.getElementById('input-group-name').value = '';
+          document.getElementById('input-line-group-id').value = '';
+          await loadMappings();
+        } else {
+          showToast('伺服器處理錯誤', true);
+        }
+      } catch (error) {
+        showToast('新增對照失敗：' + error.message, true);
+      } finally {
+        btn.disabled = false;
+        btn.innerText = '確認新增對照設定';
+      }
+    }
+
+    // Delete mapping
+    async function deleteMapping(id) {
+      if (confirm('確定要永久刪除此對照設定嗎？這將導致圖片無法發送到該群組。')) {
+        try {
+          const response = await fetch(`/api/doctor-mappings/${id}`, {
+            method: 'DELETE'
+          });
+          if (response.ok) {
+            showToast('對照項目已成功刪除！');
+            await loadMappings();
+          } else {
+            showToast('無法刪除對照項目', true);
+          }
+        } catch (error) {
+          showToast('連線失敗：' + error.message, true);
+        }
+      }
+    }
+
+    // Mapped group identity
+    let groupId = 'C9f983c75e05c479be325b749e4c30004'; // Default fallback group ID
+
+    function parseGroupId() {
+      const urlParams = new URLSearchParams(window.location.search);
+      const queryGroupId = urlParams.get('groupId');
+      if (queryGroupId) {
+        groupId = queryGroupId;
+      }
+      try {
+        if (liff && liff.getContext() && liff.getContext().groupId) {
+          groupId = liff.getContext().groupId;
+        }
+      } catch (e) {
+        console.log("LIFF context groupId query not available", e);
+      }
+    }
+
+    // Tab control
+    function switchTab(tabName) {
+      const tabMappings = document.getElementById('tab-mappings');
+      const tabRotations = document.getElementById('tab-rotations');
+      const btnMappings = document.getElementById('tab-mappings-btn');
+      const btnRotations = document.getElementById('tab-rotations-btn');
+      
+      if (tabName === 'mappings') {
+        tabMappings.style.display = 'block';
+        tabRotations.style.display = 'none';
+        btnMappings.classList.add('active');
+        btnRotations.classList.remove('active');
+      } else {
+        tabMappings.style.display = 'none';
+        tabRotations.style.display = 'block';
+        btnMappings.classList.remove('active');
+        btnRotations.classList.add('active');
+        loadRotations(); // Sync configuration fields
+      }
+    }
+
+    let exclusionDates = [];
+    let flatpickrInstance = null;
+
+    function initFlatpickr() {
+      if (flatpickrInstance) return;
+      flatpickrInstance = flatpickr("#picker-exclusion-date", {
+        mode: "multiple",
+        dateFormat: "Y-m-d",
+        onChange: function(selectedDates, dateStr, instance) {
+          exclusionDates = selectedDates.map(date => instance.formatDate(date, "Y-m-d"));
+          renderExclusionTags();
+        }
+      });
+    }
+
+    function renderExclusionTags() {
+      const container = document.getElementById('exclusions-tags-container');
+      container.innerHTML = '';
+      if (exclusionDates.length === 0) {
+        container.innerHTML = '<span style="color: var(--text-secondary); font-size: 12px;">目前無排除日期</span>';
+        return;
+      }
+      
+      // Sort dates chronologically
+      exclusionDates.sort((a, b) => a.localeCompare(b));
+      
+      exclusionDates.forEach(date => {
+        const tag = document.createElement('div');
+        tag.className = 'tag';
+        tag.innerHTML = `
+          <span>📅 ${date}</span>
+          <span class="tag-close" onclick="removeExclusionDate('${date}')">✕</span>
+        `;
+        container.appendChild(tag);
+      });
+    }
+
+    function removeExclusionDate(dateStr) {
+      exclusionDates = exclusionDates.filter(d => d !== dateStr);
+      if (flatpickrInstance) {
+        flatpickrInstance.setDate(exclusionDates);
+      }
+      renderExclusionTags();
+    }
+
+    function serializeGroupedRoster(roster) {
+      if (!roster) return '';
+      if (Array.isArray(roster)) {
+        return roster.join('\n');
+      }
+      let text = '';
+      for (const groupName in roster) {
+        text += `[${groupName}]\n`;
+        text += roster[groupName].join('\n') + '\n\n';
+      }
+      return text.trim();
+    }
+
+    function parseGroupedRoster(text) {
+      const lines = text.split('\n');
+      let hasGroups = false;
+      for (let line of lines) {
+        line = line.trim();
+        if (line.startsWith('[') && line.endsWith(']')) {
+          hasGroups = true;
+          break;
+        }
+      }
+      if (!hasGroups) {
+        return lines.map(x => x.trim()).filter(Boolean);
+      }
+      const groups = {};
+      let currentGroup = 'default';
+      for (let line of lines) {
+        line = line.trim();
+        if (!line) continue;
+        if (line.startsWith('[') && line.endsWith(']')) {
+          currentGroup = line.slice(1, -1).trim();
+          groups[currentGroup] = [];
+        } else {
+          if (!groups[currentGroup]) {
+            groups[currentGroup] = [];
+          }
+          groups[currentGroup].push(line);
+        }
+      }
+      return groups;
+    }
+
+    function updateStartSelects() {
+      const deptSeqText = document.getElementById('input-dept-sequence').value;
+      const wardSeqText = document.getElementById('input-ward-sequence').value;
+      
+      const depts = deptSeqText.split(',').map(x => x.trim()).filter(Boolean);
+      const wards = wardSeqText.split(',').map(x => x.trim()).filter(Boolean);
+      
+      const deptSelect = document.getElementById('select-start-dept');
+      const wardSelect = document.getElementById('select-start-ward');
+      
+      const prevDept = deptSelect.value;
+      const prevWard = wardSelect.value;
+      
+      deptSelect.innerHTML = '<option value="">-- 請選擇 (預設首位) --</option>';
+      depts.forEach(d => {
+        deptSelect.innerHTML += `<option value="${escapeHtml(d)}">${escapeHtml(d)}</option>`;
+      });
+      
+      wardSelect.innerHTML = '<option value="">-- 請選擇 (預設首位) --</option>';
+      wards.forEach(w => {
+        wardSelect.innerHTML += `<option value="${escapeHtml(w)}">${escapeHtml(w)}</option>`;
+      });
+      
+      if (depts.includes(prevDept)) deptSelect.value = prevDept;
+      if (wards.includes(prevWard)) wardSelect.value = prevWard;
+    }
+
+    // Load NP/Doctor presentation rotations
+    async function loadRotations() {
+      parseGroupId();
+      try {
+        const response = await fetch(`/api/rotations?groupId=${groupId}`);
+        if (response.ok) {
+          const rotation = await response.json();
+          document.getElementById('input-doctors-list').value = serializeGroupedRoster(rotation.doctors);
+          document.getElementById('input-nps-list').value = serializeGroupedRoster(rotation.nps);
+          document.getElementById('input-dept-sequence').value = (rotation.dept_sequence || ["Plasty", "Uro", "Ortho"]).join(', ');
+          document.getElementById('input-ward-sequence').value = (rotation.ward_sequence || ["9A", "9B", "8A"]).join(', ');
+          
+          exclusionDates = rotation.exclusions || [];
+          
+          if (flatpickrInstance) {
+            flatpickrInstance.setDate(exclusionDates);
+          }
+          renderExclusionTags();
+          updateStartSelects();
+        }
+      } catch (error) {
+        console.error('Failed to load rotations:', error);
+      }
+    }
+
+    // Save NP/Doctor rotations
+    async function saveRotations() {
+      parseGroupId();
+      const doctorsText = document.getElementById('input-doctors-list').value;
+      const npsText = document.getElementById('input-nps-list').value;
+      const deptSeqText = document.getElementById('input-dept-sequence').value;
+      const wardSeqText = document.getElementById('input-ward-sequence').value;
+      
+      const doctors = parseGroupedRoster(doctorsText);
+      const nps = parseGroupedRoster(npsText);
+      const exclusions = exclusionDates;
+      const dept_sequence = deptSeqText.split(',').map(x => x.trim()).filter(Boolean);
+      const ward_sequence = wardSeqText.split(',').map(x => x.trim()).filter(Boolean);
+      
+      const btn = document.getElementById('btn-save-rotations');
+      btn.disabled = true;
+      btn.innerText = '儲存中...';
+      
+      try {
+        const response = await fetch('/api/rotations', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ groupId, doctors, nps, exclusions, dept_sequence, ward_sequence })
+        });
+        
+        if (response.ok) {
+          showToast('輪序與排除配置儲存成功！');
+          updateStartSelects();
+        } else {
+          showToast('儲存失敗', true);
+        }
+      } catch (error) {
+        showToast('連線失敗：' + error.message, true);
+      } finally {
+        btn.disabled = false;
+        btn.innerText = '儲存輪序與排除配置';
+      }
+    }
+
+    // Generate weekly Thursday pairings
+    async function generateRotations() {
+      parseGroupId();
+      const startDate = document.getElementById('input-start-date').value;
+      const endDate = document.getElementById('input-end-date').value;
+      const startDept = document.getElementById('select-start-dept').value;
+      const startWard = document.getElementById('select-start-ward').value;
+      
+      if (!startDate || !endDate) {
+        showToast('請選取排程開始與結束日期', true);
+        return;
+      }
+      
+      const btn = document.getElementById('btn-generate-rotations');
+      btn.disabled = true;
+      btn.innerText = '排程重新產生中...';
+      
+      try {
+        const response = await fetch('/api/rotations/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ groupId, startDate, endDate, startDept, startWard })
+        });
+        
+        const result = await response.json();
+        if (response.ok) {
+          showToast(`週四晨會報告輪序產生成功，共 ${result.count} 筆！`);
+        } else {
+          showToast('產生失敗: ' + (result.error || '欄位未設齊'), true);
+        }
+      } catch (error) {
+        showToast('連線失敗：' + error.message, true);
+      } finally {
+        btn.disabled = false;
+        btn.innerText = '產生報告輪序行程';
+      }
+    }
+
+    // Close LIFF
+    function closeLiff() {
+      if (liff.isInClient()) {
+        liff.closeWindow();
+      } else {
+        alert('請在 LINE 內點選以關閉網頁。');
+      }
+    }
+
+    // Escaping helper to avoid XSS
+    function escapeHtml(text) {
+      if (!text) return '';
+      return text
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    window.onload = initLiff;
+  </script>
+</body>
+</html>

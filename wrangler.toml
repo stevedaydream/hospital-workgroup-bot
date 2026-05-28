@@ -1,0 +1,13 @@
+name = "hospital-workgroup-bot"
+main = "src/index.js"
+compatibility_date = "2024-05-24"
+compatibility_flags = [ "nodejs_compat" ]
+
+[vars]
+DB_TYPE = "supabase"
+GEMINI_MODEL_NAME = "gemini-2.5-flash"
+
+# Cloudflare Workers Cron Trigger Schedule
+# 23:30 UTC is exactly 07:30 Taiwan Time (UTC+8) of the next day.
+[triggers]
+crons = [ "30 23 * * *" ]

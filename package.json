@@ -1,0 +1,32 @@
+{
+  "name": "hospital-workgroup-bot",
+  "version": "1.0.0",
+  "description": "Hospital Workgroup LINE Bot for Scheduling, Notes & Case Dispatching",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node src/index.js",
+    "deploy": "wrangler deploy"
+  },
+  "keywords": [
+    "linebot",
+    "hospital",
+    "scheduler",
+    "gemini",
+    "liff"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@google/genai": "^2.6.0",
+    "@hono/node-server": "^2.0.4",
+    "@line/bot-sdk": "^9.4.0",
+    "@supabase/supabase-js": "^2.106.2",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "firebase-admin": "^12.1.0",
+    "hono": "^4.12.23",
+    "node-cron": "^3.0.3"
+  }
+}

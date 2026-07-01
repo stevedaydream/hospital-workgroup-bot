@@ -1,11 +1,19 @@
 name = "hospital-workgroup-bot"
 main = "src/index.js"
-compatibility_date = "2024-05-24"
+compatibility_date = "2024-09-23"
 compatibility_flags = [ "nodejs_compat" ]
 
 [vars]
 DB_TYPE = "supabase"
 GEMINI_MODEL_NAME = "gemini-2.5-flash"
+# AI provider priority: "gemini" | "gemini,ollama" | "openai,gemini" ...
+AI_PROVIDER_ORDER = "gemini"
+# Self-hosted local model fallback (set OLLAMA_BASE_URL to enable).
+# OLLAMA_BASE_URL is best kept as a secret: `wrangler secret put OLLAMA_BASE_URL`
+OLLAMA_MODEL_NAME = "gemma3n:e4b"
+# OpenAI-compatible self-hosted model (e.g. Qwen-VL via vLLM / LM Studio).
+# Set the endpoint/key as secrets: `wrangler secret put OPENAI_BASE_URL` / OPENAI_API_KEY
+OPENAI_MODEL_NAME = "qwen2.5-vl"
 
 # Cloudflare Workers Cron Trigger Schedule
 # 23:30 UTC is exactly 07:30 Taiwan Time (UTC+8) of the next day.

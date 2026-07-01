@@ -6,6 +6,11 @@ compatibility_flags = [ "nodejs_compat" ]
 [vars]
 DB_TYPE = "supabase"
 GEMINI_MODEL_NAME = "gemini-2.5-flash"
+# AI provider priority: "gemini" | "gemini,ollama" | "ollama,gemini"
+AI_PROVIDER_ORDER = "gemini"
+# Self-hosted local model fallback (set OLLAMA_BASE_URL to enable).
+# OLLAMA_BASE_URL is best kept as a secret: `wrangler secret put OLLAMA_BASE_URL`
+OLLAMA_MODEL_NAME = "gemma3n:e4b"
 
 # Cloudflare Workers Cron Trigger Schedule
 # 23:30 UTC is exactly 07:30 Taiwan Time (UTC+8) of the next day.

@@ -28,6 +28,15 @@ const GEMINI_MODEL_NAME = process.env.GEMINI_MODEL_NAME || 'gemini-2.5-flash';
 const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL;
 const OLLAMA_MODEL_NAME = process.env.OLLAMA_MODEL_NAME || 'gemma3n:e4b';
 
+// Self-hosted OpenAI-compatible endpoint (vLLM / LM Studio / llama.cpp server
+// serving e.g. a Qwen*-VL vision model). OPENAI_BASE_URL should be the API base
+// that exposes /chat/completions, e.g. "https://host/v1". Must be reachable
+// from the backend (use a public HTTPS endpoint / Cloudflare Tunnel for a local
+// machine). Leave OPENAI_BASE_URL unset to disable.
+const OPENAI_BASE_URL = process.env.OPENAI_BASE_URL;
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY; // optional for local servers
+const OPENAI_MODEL_NAME = process.env.OPENAI_MODEL_NAME || 'qwen2.5-vl';
+
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 // ----------------------------------------------------
@@ -94,6 +103,48 @@ async function ollamaGenerate({ imageBuffers, prompt }) {
 }
 
 // ----------------------------------------------------
+// OpenAI-compatible provider (vLLM / LM Studio / llama.cpp, e.g. Qwen*-VL)
+// ----------------------------------------------------
+async function openaiGenerate({ imageBuffers, prompt }) {
+  const url = `${OPENAI_BASE_URL.replace(/\/$/, '')}/chat/completions`;
+  const content = [
+    { type: 'text', text: prompt },
+    ...imageBuffers.map(buffer => ({
+      type: 'image_url',
+      image_url: { url: `data:image/jpeg;base64,${buffer.toString('base64')}` }
+    }))
+  ];
+
+  const headers = { 'Content-Type': 'application/json' };
+  if (OPENAI_API_KEY) headers['Authorization'] = `Bearer ${OPENAI_API_KEY}`;
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      model: OPENAI_MODEL_NAME,
+      messages: [{ role: 'user', content }],
+      response_format: { type: 'json_object' },
+      stream: false
+    })
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    const err = new Error(`OpenAI-compatible HTTP ${res.status}: ${body.slice(0, 200)}`);
+    err.status = res.status;
+    throw err;
+  }
+
+  const data = await res.json();
+  const text = data?.choices?.[0]?.message?.content;
+  if (typeof text !== 'string') {
+    throw new Error('OpenAI-compatible response missing choices[0].message.content');
+  }
+  return text;
+}
+
+// ----------------------------------------------------
 // Provider registry
 // ----------------------------------------------------
 const PROVIDERS = {
@@ -106,6 +157,11 @@ const PROVIDERS = {
     name: 'ollama',
     isConfigured: () => !!OLLAMA_BASE_URL,
     generate: ollamaGenerate
+  },
+  openai: {
+    name: 'openai',
+    isConfigured: () => !!OPENAI_BASE_URL,
+    generate: openaiGenerate
   }
 };
 

@@ -4,130 +4,128 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>醫院工作助手 ID 與對照管理後台</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/style.css">
   <!-- Flatpickr Multiple Date Picker CDN -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/themes/dark.css">
   <style>
-    /* Additional dashboard styles */
-    .admin-section {
-      margin-bottom: 28px;
-    }
-    
-    .section-title {
-      font-size: 15px;
-      font-weight: 700;
-      color: #14b8a6;
-      margin-bottom: 12px;
-      border-bottom: 1px solid var(--border-color);
-      padding-bottom: 6px;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-    
-    .mapping-grid {
-      display: grid;
-      grid-template-columns: 1fr;
-      gap: 12px;
-      margin-bottom: 16px;
-      max-height: 280px;
-      overflow-y: auto;
-      padding-right: 4px;
-    }
-    
-    .mapping-card {
-      background: rgba(255, 255, 255, 0.02);
-      border: 1px solid var(--border-color);
-      border-radius: 14px;
-      padding: 12px 16px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      position: relative;
-      transition: var(--transition);
-    }
-    
-    .mapping-card:hover {
-      background: rgba(255, 255, 255, 0.05);
-      border-color: rgba(20, 184, 166, 0.2);
-    }
-    
-    .mapping-details {
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-      padding-right: 40px;
-    }
-    
-    .mapping-main {
-      font-size: 14px;
-      font-weight: 600;
-    }
-    
-    .mapping-sub {
-      font-size: 11px;
-      color: var(--text-secondary);
-      font-family: monospace;
-      word-break: break-all;
-    }
-    
+    /* 管理設定 — the reference sheet behind the register: routing rules,
+       rotation lists and the doctor roster. Dense, checkable, no ornament. */
 
-    
-    /* User Table List */
-    .user-list {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      max-height: 180px;
-      overflow-y: auto;
+    .admin-section {
+      padding: 18px 20px;
+      border-bottom: 1px solid var(--rule);
     }
-    
-    .user-item {
-      background: rgba(255, 255, 255, 0.01);
-      border: 1px solid var(--border-color);
-      border-radius: 10px;
-      padding: 8px 12px;
-      font-size: 12px;
+
+    .section-title {
+      font-family: var(--font-serif);
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: 0.14em;
+      color: var(--ink);
       display: flex;
       align-items: center;
-      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 14px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--rule);
     }
-    
-    /* Form Dropdown select styling */
-    select.input-field {
-      appearance: none;
-      -webkit-appearance: none;
-      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' fill='%2394a3b8'><path d='M7 10l5 5 5-5z'/></svg>");
-      background-repeat: no-repeat;
-      background-position: right 12px center;
-      cursor: pointer;
+
+    .mapping-grid { display: block; }
+
+    /* Each routing rule is a ruled row: who, which group, which mode */
+    .mapping-card {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 11px 0;
+      border-bottom: 1px solid var(--rule);
+      background: transparent;
+      border-radius: 0;
     }
-    
+
+    .mapping-card:last-child { border-bottom: none; }
+
+    .mapping-details { flex: 1; min-width: 0; }
+
+    .mapping-main {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--ink);
+      letter-spacing: 0.02em;
+    }
+
+    .mapping-sub {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 0.06em;
+      color: var(--ink-faint);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .user-list { display: block; }
+
+    .user-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 0;
+      border-bottom: 1px solid var(--rule);
+      font-size: 14px;
+      color: var(--ink);
+    }
+
+    .user-item:last-child { border-bottom: none; }
+
     .modal-actions {
       display: flex;
-      gap: 12px;
+      gap: 10px;
+      margin-top: 16px;
     }
+
+    /* Rotation entries are name tags clipped onto the sheet */
     .tag {
-      background: rgba(244, 63, 94, 0.15);
-      color: #fb7185;
-      border: 1px solid rgba(244, 63, 94, 0.3);
-      padding: 6px 10px;
-      border-radius: 8px;
-      font-size: 12px;
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      font-family: monospace;
+      background: var(--paper-sunken);
+      border: 1px solid var(--rule);
+      border-radius: var(--radius);
+      padding: 5px 9px;
+      font-size: 13px;
+      color: var(--ink);
     }
+
     .tag-close {
       cursor: pointer;
-      color: #fb7185;
-      font-weight: bold;
-      transition: var(--transition);
+      color: var(--ink-faint);
+      font-size: 14px;
+      line-height: 1;
     }
-    .tag-close:hover {
-      color: #f43f5e;
+
+    .tag-close:active { color: var(--alert); }
+
+    /* Roster import: the diff is the point, so it gets the pen treatment --
+       nothing has been written to the roster yet. */
+    #roster-preview { border-left: 2px solid var(--pen) !important; }
+
+    #roster-preview-detail {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      line-height: 1.9;
+      letter-spacing: 0.02em;
+    }
+
+    #roster-list .roster-dept {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      letter-spacing: 0.1em;
+      color: var(--ink-faint);
     }
   </style>
 </head>
@@ -149,8 +147,9 @@
 
     <!-- Tabs Header -->
     <div class="tabs-header" style="display: flex; gap: 8px; margin-bottom: 20px; border-bottom: 1px solid var(--border-color); padding-bottom: 8px;">
-      <button class="filter-btn active" id="tab-mappings-btn" onclick="switchTab('mappings')" style="flex: 1; border-radius: 12px; padding: 10px; font-weight: bold;">科別對照對應表</button>
-      <button class="filter-btn" id="tab-rotations-btn" onclick="switchTab('rotations')" style="flex: 1; border-radius: 12px; padding: 10px; font-weight: bold;">晨會報告輪序</button>
+      <button class="filter-btn active" id="tab-mappings-btn" onclick="switchTab('mappings')" style="flex: 1; border-radius: var(--radius); padding: 10px; font-weight: bold;">群組對照</button>
+      <button class="filter-btn" id="tab-rotations-btn" onclick="switchTab('rotations')" style="flex: 1; border-radius: var(--radius); padding: 10px; font-weight: bold;">晨會輪序</button>
+      <button class="filter-btn" id="tab-roster-btn" onclick="switchTab('roster')" style="flex: 1; border-radius: var(--radius); padding: 10px; font-weight: bold;">醫師名冊</button>
     </div>
 
     <!-- Mappings Tab Content -->
@@ -173,7 +172,7 @@
           <span>＋</span> 新增對照設定項目
         </div>
         
-        <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-color); padding: 16px; border-radius: 16px;">
+        <div style="background: var(--paper-sunken); border: 1px solid var(--border-color); padding: 16px; border-radius: var(--radius);">
           <div class="form-group">
             <label class="form-label" style="font-size: 12px;">比對關鍵字 (Match Key)</label>
             <input type="text" class="input-field" id="input-match-key" placeholder="例如：陳鍾沛 (姓名) 或 URO (科別代碼)" style="padding: 10px 14px; font-size: 13px;">
@@ -216,6 +215,45 @@
       </div>
     </div>
 
+    <!-- Roster Tab Content -->
+    <div id="tab-roster" class="tab-content" style="display: none;">
+      <div class="admin-section">
+        <div class="section-title">
+          <span>📥</span> 匯入醫師名冊
+        </div>
+        <div style="background: var(--paper-sunken); border: 1px solid var(--border-color); padding: 16px; border-radius: var(--radius); margin-bottom: 16px;">
+          <p style="font-size: 12px; color: var(--text-secondary); line-height: 1.7; margin-bottom: 12px;">
+            支援 <b>.xlsx</b> 或 <b>.csv</b>。格式可以是「姓名／科別」兩欄，
+            也可以直接用大表底部那種「科別代號當欄標題、名字列在底下」的排版。
+            <br>匯入前會先顯示差異，確認後才會寫入，且保留上一版可還原。
+          </p>
+          <input type="file" id="roster-file" accept=".xlsx,.csv"
+                 style="width: 100%; font-size: 13px; color: var(--text-secondary); margin-bottom: 12px;">
+          <button class="btn-secondary" onclick="previewRoster()" style="width: 100%;">解析並預覽差異</button>
+        </div>
+
+        <div id="roster-preview" style="display: none; background: var(--paper-sunken); border: 1px solid var(--border-color); padding: 16px; border-radius: var(--radius); margin-bottom: 16px;">
+          <div id="roster-preview-summary" style="font-size: 13px; line-height: 1.8;"></div>
+          <div id="roster-preview-detail" style="font-size: 12px; color: var(--text-secondary); margin-top: 10px; max-height: 240px; overflow-y: auto;"></div>
+          <button class="btn-primary" onclick="applyRoster()" style="width: 100%; margin-top: 14px;">確認套用這份名冊</button>
+        </div>
+      </div>
+
+      <div class="admin-section">
+        <div class="section-title">
+          <span>👥</span> 目前名冊 (<span id="roster-count">0</span> 人)
+        </div>
+        <div id="roster-list"></div>
+      </div>
+
+      <div class="admin-section">
+        <div class="section-title">
+          <span>🕘</span> 歷史版本
+        </div>
+        <div id="roster-snapshots"></div>
+      </div>
+    </div>
+
     <!-- Rotations Tab Content -->
     <div id="tab-rotations" class="tab-content" style="display: none;">
       <!-- Section: Rotation Configuration -->
@@ -223,7 +261,7 @@
         <div class="section-title">
           <span>📋</span> 晨會報告輪序配置 (NP & Doctor Rotations)
         </div>
-        <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-color); padding: 16px; border-radius: 16px; margin-bottom: 16px;">
+        <div style="background: var(--paper-sunken); border: 1px solid var(--border-color); padding: 16px; border-radius: var(--radius); margin-bottom: 16px;">
           <div class="form-group">
             <label class="form-label" style="font-size: 12px;">主治醫師輪序名單 (每行輸入一人，按輪序排列，可分組如 [Ortho])</label>
             <textarea class="input-field" id="input-doctors-list" placeholder="[Ortho]&#10;陳鍾沛&#10;鄧明紘&#10;劉哲瑋&#10;原永健&#10;&#10;[Uro]&#10;蔡尚憲&#10;陳樞鴻" style="height: 100px; resize: none; padding: 10px 14px; font-size: 13px;"></textarea>
@@ -259,7 +297,7 @@
         <div class="section-title">
           <span>📅</span> 自動排程產生器 (Thursday Scheduler)
         </div>
-        <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-color); padding: 16px; border-radius: 16px;">
+        <div style="background: var(--paper-sunken); border: 1px solid var(--border-color); padding: 16px; border-radius: var(--radius);">
           <div class="form-row" style="margin-bottom: 12px;">
             <div class="form-group" style="flex: 1; margin-bottom: 0;">
               <label class="form-label" style="font-size: 11px;">開始日期</label>
@@ -288,7 +326,7 @@
     </div>
 
     <!-- Close button -->
-    <button class="btn-secondary" style="width: 100%; padding: 12px; margin-top: 10px;" onclick="closeLiff()">
+    <button class="btn-secondary" style="padding: 12px;" onclick="closeLiff()">
       ✕ 關閉管理後台
     </button>
   </div>
@@ -512,23 +550,145 @@
     }
 
     // Tab control
+    const TABS = ['mappings', 'rotations', 'roster'];
+
     function switchTab(tabName) {
-      const tabMappings = document.getElementById('tab-mappings');
-      const tabRotations = document.getElementById('tab-rotations');
-      const btnMappings = document.getElementById('tab-mappings-btn');
-      const btnRotations = document.getElementById('tab-rotations-btn');
-      
-      if (tabName === 'mappings') {
-        tabMappings.style.display = 'block';
-        tabRotations.style.display = 'none';
-        btnMappings.classList.add('active');
-        btnRotations.classList.remove('active');
-      } else {
-        tabMappings.style.display = 'none';
-        tabRotations.style.display = 'block';
-        btnMappings.classList.remove('active');
-        btnRotations.classList.add('active');
-        loadRotations(); // Sync configuration fields
+      TABS.forEach(name => {
+        document.getElementById('tab-' + name).style.display = name === tabName ? 'block' : 'none';
+        document.getElementById('tab-' + name + '-btn').classList.toggle('active', name === tabName);
+      });
+      if (tabName === 'roster') {
+        loadRoster();
+        loadSnapshots();
+      }
+    }
+
+    // ----- Doctor roster -----
+    let pendingRosterEntries = null;
+
+    async function previewRoster() {
+      const input = document.getElementById('roster-file');
+      if (!input.files || input.files.length === 0) {
+        showToast('請先選擇檔案', false);
+        return;
+      }
+
+      const body = new FormData();
+      body.append('file', input.files[0]);
+
+      try {
+        const res = await fetch('/api/doctors/preview', { method: 'POST', body });
+        const data = await res.json();
+        if (!res.ok) {
+          showToast(data.error || '解析失敗', false);
+          return;
+        }
+
+        pendingRosterEntries = data.entries;
+        const { total, added, changed, removed } = data.summary;
+        document.getElementById('roster-preview-summary').innerHTML =
+          '<b>解析結果：共 ' + total + ' 人</b><br>' +
+          '<span style="color: var(--color-emerald, var(--stamp));">新增 ' + added + '</span>　' +
+          '<span style="color: var(--flag);">異動 ' + changed + '</span>　' +
+          '<span style="color: var(--color-rose, var(--alert));">移除 ' + removed + '</span>';
+
+        const lines = [];
+        data.added.forEach(d => lines.push('+ ' + d.name + '（' + d.department + '）'));
+        data.changed.forEach(d => lines.push('~ ' + d.name + '：' + d.from + ' → ' + d.to));
+        data.removed.forEach(d => lines.push('- ' + d.name + '（' + d.department + '）'));
+        document.getElementById('roster-preview-detail').innerHTML =
+          lines.length ? lines.join('<br>') : '與目前名冊完全相同。';
+
+        document.getElementById('roster-preview').style.display = 'block';
+      } catch (err) {
+        showToast('連線異常', false);
+      }
+    }
+
+    async function applyRoster() {
+      if (!pendingRosterEntries) return;
+      try {
+        const res = await fetch('/api/doctors/import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ entries: pendingRosterEntries, note: '由管理頁匯入' })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          showToast(data.error || '匯入失敗', false);
+          return;
+        }
+        showToast('名冊已更新：' + data.count + ' 人', true);
+        pendingRosterEntries = null;
+        document.getElementById('roster-preview').style.display = 'none';
+        document.getElementById('roster-file').value = '';
+        loadRoster();
+        loadSnapshots();
+      } catch (err) {
+        showToast('連線異常', false);
+      }
+    }
+
+    async function loadRoster() {
+      const container = document.getElementById('roster-list');
+      try {
+        const res = await fetch('/api/doctors');
+        const doctors = await res.json();
+        document.getElementById('roster-count').innerText = doctors.length;
+
+        if (doctors.length === 0) {
+          container.innerHTML = '<div style="text-align: center; color: var(--text-secondary); padding: 20px;">尚未匯入名冊。分配表的檔案直解與姓名校正都需要它。</div>';
+          return;
+        }
+
+        const byDept = {};
+        doctors.forEach(d => { (byDept[d.department] = byDept[d.department] || []).push(d.name); });
+        container.innerHTML = Object.keys(byDept).sort().map(dept =>
+          '<div style="margin-bottom: 10px;">' +
+            '<div style="font-size: 12px; font-weight: bold; color: var(--color-teal, var(--stamp));">' + dept + '</div>' +
+            '<div style="font-size: 13px; color: var(--text-secondary); line-height: 1.7;">' + byDept[dept].join('、') + '</div>' +
+          '</div>'
+        ).join('');
+      } catch (err) {
+        container.innerHTML = '<div style="text-align: center; color: var(--color-rose); padding: 20px;">載入名冊失敗</div>';
+      }
+    }
+
+    async function loadSnapshots() {
+      const container = document.getElementById('roster-snapshots');
+      try {
+        const res = await fetch('/api/doctors/snapshots');
+        const snapshots = await res.json();
+        if (snapshots.length === 0) {
+          container.innerHTML = '<div style="font-size: 12px; color: var(--text-secondary);">尚無歷史版本。</div>';
+          return;
+        }
+        container.innerHTML = snapshots.map(s =>
+          '<div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border-color);">' +
+            '<div style="font-size: 12px;">#' + s.id + '　' + new Date(s.created_at).toLocaleString('zh-TW') +
+            '<br><span style="color: var(--text-secondary);">' + (s.note || s.created_by) + '</span></div>' +
+            '<button class="btn-secondary" style="font-size: 11px; padding: 6px 10px;" onclick="restoreSnapshot(' + s.id + ')">還原</button>' +
+          '</div>'
+        ).join('');
+      } catch (err) {
+        container.innerHTML = '<div style="font-size: 12px; color: var(--color-rose);">載入歷史版本失敗</div>';
+      }
+    }
+
+    async function restoreSnapshot(id) {
+      if (!confirm('確定要把名冊還原成快照 #' + id + ' 嗎？目前的名冊會先被存成新的快照。')) return;
+      try {
+        const res = await fetch('/api/doctors/snapshots/' + id + '/restore', { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) {
+          showToast(data.error || '還原失敗', false);
+          return;
+        }
+        showToast('已還原：' + data.count + ' 人', true);
+        loadRoster();
+        loadSnapshots();
+      } catch (err) {
+        showToast('連線異常', false);
       }
     }
 

@@ -1,7 +1,7 @@
 import cron from 'node-cron';
 import dotenv from 'dotenv';
 import { db } from './db.js';
-import { pushMessage } from './line.js';
+import { pushMessage, adoptConfirmation } from './line.js';
 import { todayInTaipei, daysBetween, dayOfWeek } from './util/date.js';
 
 dotenv.config();
@@ -174,6 +174,30 @@ export async function runDailyReminders() {
   }
 }
 
+/**
+ * Adopts dispatch proposals nobody answered within the grace period.
+ *
+ * The confirmation card exists to catch misreadings, but a ward at 03:00 has
+ * nobody to tap it. Expiring silently would turn "we added a safety check"
+ * into "the table stopped going out", which is the worse failure -- so the
+ * matched result is adopted and the group is told it happened.
+ */
+export async function runAutoAdoption() {
+  try {
+    const due = await db.dispatch_confirmations.getDueForAutoAdopt();
+    if (due.length === 0) return { adopted: 0 };
+
+    for (const confirmation of due) {
+      console.log(`[Scheduler] Auto-adopting unconfirmed dispatch #${confirmation.id}`);
+      await adoptConfirmation(confirmation.id, '系統自動採用', { auto: true });
+    }
+    return { adopted: due.length };
+  } catch (error) {
+    console.error('[Scheduler] Error during auto-adoption:', error);
+    return { adopted: 0, error: error.message };
+  }
+}
+
 // ----------------------------------------------------
 // Cron Job Schedule
 // ----------------------------------------------------
@@ -195,5 +219,9 @@ export function initializeScheduler() {
     },
     { timezone: 'Asia/Taipei' }
   );
-  console.log('[Cron] Scheduler armed: every day at 07:30 Asia/Taipei.');
+
+  // Checked often enough that the grace period means what the card says.
+  cron.schedule('*/10 * * * *', runAutoAdoption, { timezone: 'Asia/Taipei' });
+
+  console.log('[Cron] Scheduler armed: dispatch 07:30 Asia/Taipei, auto-adoption every 10 minutes.');
 }

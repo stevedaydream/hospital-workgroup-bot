@@ -10,7 +10,10 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
-    "migrate:supabase": "node scripts/migrate-from-supabase.mjs"
+    "migrate:supabase": "node scripts/migrate-from-supabase.mjs",
+    "benchmark": "node scripts/benchmark.mjs",
+    "richmenu:build": "node scripts/build-richmenu.mjs",
+    "richmenu:deploy": "node scripts/setup-richmenu.mjs"
   },
   "keywords": [
     "linebot",
@@ -26,7 +29,9 @@
     "@hono/node-server": "^2.0.4",
     "better-sqlite3": "^11.8.1",
     "dotenv": "^16.4.5",
+    "exceljs": "^4.4.0",
     "hono": "^4.12.23",
-    "node-cron": "^3.0.3"
+    "node-cron": "^3.0.3",
+    "sharp": "^0.35.4"
   }
 }

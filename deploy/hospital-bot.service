@@ -1,0 +1,32 @@
+[Unit]
+Description=Hospital Workgroup LINE Bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/hospital-workgroup-bot
+EnvironmentFile=/opt/hospital-workgroup-bot/.env
+ExecStart=/usr/bin/node src/index.js
+Restart=always
+RestartSec=5
+
+# The 07:30 cron job is pinned to Asia/Taipei in code, but keeping the whole
+# process on Taiwan time makes log timestamps match the ward's clock.
+Environment=TZ=Asia/Taipei
+Environment=NODE_ENV=production
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=hospital-bot
+
+# Hardening: the process only ever needs its own directory.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/hospital-workgroup-bot/data /opt/hospital-workgroup-bot/public/images
+
+[Install]
+WantedBy=multi-user.target

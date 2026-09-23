@@ -1,0 +1,21 @@
+# Caddy reverse proxy for the hospital workgroup bot.
+#
+# Install:  sudo cp deploy/Caddyfile /etc/caddy/Caddyfile && sudo systemctl reload caddy
+#
+# Replace the hostname with your DuckDNS subdomain. Caddy obtains and renews
+# the Let's Encrypt certificate automatically; LINE rejects anything that is
+# not valid HTTPS.
+
+your-subdomain.duckdns.org {
+	encode gzip
+
+	# Dispatched case-table images are fetched by LINE's servers at 07:30.
+	# They are immutable once written, so let LINE and the CDN cache them.
+	@images path /images/*
+	header @images Cache-Control "public, max-age=86400"
+
+	# The bot serves its own static LIFF pages, so everything goes to Node.
+	reverse_proxy 127.0.0.1:3000 {
+		header_up X-Forwarded-For {remote_host}
+	}
+}

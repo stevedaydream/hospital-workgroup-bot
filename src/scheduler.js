@@ -1,6 +1,8 @@
+import cron from 'node-cron';
 import dotenv from 'dotenv';
 import { db } from './db.js';
 import { pushMessage } from './line.js';
+import { todayInTaipei, daysBetween, dayOfWeek } from './util/date.js';
 
 dotenv.config();
 
@@ -13,11 +15,12 @@ const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 export async function runDailyDispatch() {
   console.log('[Scheduler] Starting daily dispatch job...');
   try {
-    const pendingDispatches = await db.daily_dispatch_cache.getPending();
-    const confirmedDispatches = pendingDispatches.filter(d => d.is_confirmed);
-    
+    // Rows whose dispatch_date is today, i.e. queued yesterday for this morning.
+    const dueDispatches = await db.daily_dispatch_cache.getDue();
+    const confirmedDispatches = dueDispatches.filter(d => d.is_confirmed);
+
     if (confirmedDispatches.length === 0) {
-      console.log('[Scheduler] No confirmed dispatches for today.');
+      console.log(`[Scheduler] No confirmed dispatches for ${todayInTaipei()}.`);
       return { success: true, count: 0 };
     }
 
@@ -62,17 +65,10 @@ export async function runDailyReminders() {
     const allMappings = await db.doctor_group_mapping.getAll();
     const allUsers = await db.users.getAll();
 
-    const now = new Date();
-    // Get current date string in Taiwan Time (YYYY-MM-DD)
-    const tzOffset = 8 * 60 * 60 * 1000;
-    const todayStr = new Date(now.getTime() + tzOffset).toISOString().split('T')[0];
-    const today = new Date(todayStr);
+    const todayStr = todayInTaipei();
 
     for (const evt of allEvents) {
-      // Parse event date
-      const eventDate = new Date(evt.date);
-      const diffTime = eventDate - today;
-      const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+      const diffDays = daysBetween(todayStr, evt.date);
 
       // Remind at 28 days (under 1 month warning), 7 days (1 week warning) and 1 day (final warning)
       if (diffDays === 28 || diffDays === 7 || diffDays === 1) {
@@ -93,7 +89,7 @@ export async function runDailyReminders() {
               
               if (targetUser) {
                 const mentionText = `@${targetUser.display_name}`;
-                const suffix = ` 於 ${evt.date} (${getDayOfWeek(evt.date)})${timeStr} 有排定晨會個案報告，特此預告提醒。`;
+                const suffix = ` 於 ${evt.date} (${dayOfWeek(evt.date)})${timeStr} 有排定晨會個案報告，特此預告提醒。`;
                 const fullText = prefix + mentionText + suffix;
                 messageObj = {
                   type: "text",
@@ -109,7 +105,7 @@ export async function runDailyReminders() {
               } else {
                 messageObj = {
                   type: "text",
-                  text: `📢 報告提醒（下月預告）：${docName}醫師 於 ${evt.date} (${getDayOfWeek(evt.date)})${timeStr} 有排定晨會個案報告，特此預告提醒。`
+                  text: `📢 報告提醒（下月預告）：${docName}醫師 於 ${evt.date} (${dayOfWeek(evt.date)})${timeStr} 有排定晨會個案報告，特此預告提醒。`
                 };
               }
             } else if (diffDays === 7) {
@@ -119,7 +115,7 @@ export async function runDailyReminders() {
               
               if (targetUser) {
                 const mentionText = `@${targetUser.display_name}`;
-                const suffix = ` (${getDayOfWeek(evt.date)}) 有晨會個案報告，請提前準備報告內容。`;
+                const suffix = ` (${dayOfWeek(evt.date)}) 有晨會個案報告，請提前準備報告內容。`;
                 const fullText = prefix + mentionText + suffix;
                 messageObj = {
                   type: "text",
@@ -135,7 +131,7 @@ export async function runDailyReminders() {
               } else {
                 messageObj = {
                   type: "text",
-                  text: `📢 報告提醒：下週 ${evt.date} (${getDayOfWeek(evt.date)})${timeStr} 由 ${docName}醫師 進行晨會報告，請提前準備。`
+                  text: `📢 報告提醒：下週 ${evt.date} (${dayOfWeek(evt.date)})${timeStr} 由 ${docName}醫師 進行晨會報告，請提前準備。`
                 };
               }
             } else {
@@ -178,26 +174,26 @@ export async function runDailyReminders() {
   }
 }
 
-function getDayOfWeek(dateStr) {
-  const date = new Date(dateStr);
-  return '週' + ['日', '一', '二', '三', '四', '五', '六'][date.getDay()];
-}
-
 // ----------------------------------------------------
-// Setup Cron Job Schedule locally
+// Cron Job Schedule
 // ----------------------------------------------------
-export async function initializeScheduler() {
-  if (process.env.NODE_ENV !== 'production') {
-    try {
-      const cron = (await import('node-cron')).default;
-      cron.schedule('30 7 * * *', async () => {
-        console.log('[Cron] 07:30 Daily Cron Triggered.');
-        await runDailyDispatch();
-        await runDailyReminders();
-      });
-      console.log('[Cron] Local scheduler initialized to run everyday at 07:30.');
-    } catch (e) {
-      console.warn('[Cron] Local scheduler failed to initialize:', e.message);
-    }
-  }
+/**
+ * Starts the 07:30 job. This used to be skipped whenever NODE_ENV was
+ * 'production' (the schedule lived in Cloudflare's cron trigger instead), so a
+ * production Node process silently never dispatched anything.
+ *
+ * The timezone is pinned explicitly rather than inherited from the host, so a
+ * VM left on UTC still fires at 07:30 Taiwan time.
+ */
+export function initializeScheduler() {
+  cron.schedule(
+    '30 7 * * *',
+    async () => {
+      console.log('[Cron] 07:30 Asia/Taipei daily job triggered.');
+      await runDailyDispatch();
+      await runDailyReminders();
+    },
+    { timezone: 'Asia/Taipei' }
+  );
+  console.log('[Cron] Scheduler armed: every day at 07:30 Asia/Taipei.');
 }

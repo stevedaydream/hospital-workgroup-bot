@@ -5,7 +5,8 @@ import { serveStatic } from '@hono/node-server/serve-static';
 import dotenv from 'dotenv';
 import { db } from './db.js';
 import { requireLiffAuth, requireAdminKey } from './auth.js';
-import { verifySignature, handleWebhookEvent, pushMessage } from './line.js';
+import { verifySignature, handleWebhookEvent, pushMessage, adoptConfirmation } from './line.js';
+import { readGrid, parseRoster } from './parsers/workbook.js';
 import { initializeScheduler, runDailyDispatch, runDailyReminders } from './scheduler.js';
 
 dotenv.config();
@@ -336,6 +337,115 @@ app.post('/api/dispatch-cache/confirm', async (c) => {
       });
     }
     
+    return c.json({ success: true });
+  } catch (error) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// ----------------------------------------------------
+// Doctor Roster
+// ----------------------------------------------------
+app.get('/api/doctors', async (c) => {
+  try {
+    return c.json(await db.doctors.getAll());
+  } catch (error) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+/**
+ * Parses an uploaded roster and reports the diff WITHOUT writing anything.
+ * A roster written wrong misroutes every future dispatch, so the import is
+ * deliberately two-step: see the damage first, then apply it.
+ */
+app.post('/api/doctors/preview', async (c) => {
+  try {
+    const form = await c.req.formData();
+    const file = form.get('file');
+    if (!file || typeof file === 'string') {
+      return c.json({ error: '沒有收到檔案' }, 400);
+    }
+
+    const buffer = Buffer.from(await file.arrayBuffer());
+    const grid = await readGrid(buffer, file.name);
+    const entries = parseRoster(grid);
+
+    const existing = await db.doctors.getAll();
+    const existingByName = new Map(existing.map((doctor) => [doctor.name, doctor]));
+    const incomingNames = new Set(entries.map((entry) => entry.name));
+
+    const added = entries.filter((entry) => !existingByName.has(entry.name));
+    const changed = entries.filter((entry) => {
+      const previous = existingByName.get(entry.name);
+      return previous && previous.department !== entry.department.toUpperCase();
+    });
+    const removed = existing.filter((doctor) => !incomingNames.has(doctor.name));
+
+    return c.json({
+      entries,
+      summary: { total: entries.length, added: added.length, changed: changed.length, removed: removed.length },
+      added,
+      changed: changed.map((entry) => ({
+        name: entry.name,
+        from: existingByName.get(entry.name).department,
+        to: entry.department.toUpperCase()
+      })),
+      removed
+    });
+  } catch (error) {
+    return c.json({ error: error.message }, 400);
+  }
+});
+
+// Commit a previewed roster. Snapshots the previous state for rollback.
+app.post('/api/doctors/import', async (c) => {
+  const { entries, note } = await c.req.json();
+  if (!Array.isArray(entries) || entries.length === 0) {
+    return c.json({ error: '名冊內容是空的' }, 400);
+  }
+  try {
+    const doctors = await db.doctors.replaceAll(entries, c.get('displayName'), note || '');
+    return c.json({ success: true, count: doctors.length, doctors });
+  } catch (error) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+app.get('/api/doctors/snapshots', async (c) => {
+  try {
+    return c.json(await db.doctors.listSnapshots());
+  } catch (error) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+app.post('/api/doctors/snapshots/:id/restore', async (c) => {
+  try {
+    const doctors = await db.doctors.restoreSnapshot(parseInt(c.req.param('id'), 10), c.get('displayName'));
+    return c.json({ success: true, count: doctors.length });
+  } catch (error) {
+    return c.json({ error: error.message }, 400);
+  }
+});
+
+// ----------------------------------------------------
+// Dispatch Confirmations
+// ----------------------------------------------------
+app.get('/api/confirmations/:id', async (c) => {
+  try {
+    const confirmation = await db.dispatch_confirmations.getById(parseInt(c.req.param('id'), 10));
+    if (!confirmation) return c.json({ error: 'Not found' }, 404);
+    return c.json(confirmation);
+  } catch (error) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+app.post('/api/confirmations/:id/confirm', async (c) => {
+  try {
+    const result = await adoptConfirmation(parseInt(c.req.param('id'), 10), c.get('displayName'));
+    if (!result) return c.json({ error: '這筆分流已經處理過了' }, 409);
     return c.json({ success: true });
   } catch (error) {
     return c.json({ error: error.message }, 500);

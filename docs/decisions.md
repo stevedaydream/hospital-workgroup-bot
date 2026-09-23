@@ -40,7 +40,9 @@
 
 ## 階段狀態
 
-- **P1 已完成**：單機化、SQLite、時區與 `dispatch_date`、API 驗證、部署檔。AI 仍為 Gemini。
-- **P2 未開始**：llama.cpp + Gemma 4 E4B + mmproj、provider 抽象、GBNF、map-reduce、fallback、輕量驗證。
-- **P3 未開始**：`doctors` 主檔與匯入入口、檔案直解、確認卡片。
-- **P4（新增，待排）**：Rich Menu 與 LIFF 介面改版。
+- **P1 已完成**：單機化、SQLite、時區與 `dispatch_date`、API 驗證、部署檔。
+- **P2 已完成**：provider 抽象（local / gemini / mock）、兩階段管線 + GBNF、map-reduce 多圖、序列化佇列、影像前處理、自動 fallback 與群組明示、`scripts/benchmark.mjs`。
+- **P3 已完成**：`doctors` 主檔與匯入預覽／還原、xlsx/csv 直解、封閉名單比對、確認卡片與逾時自動採用。
+- **P4 已完成**：病房表單設計系統（4 個 LIFF 頁面 + Flex 卡片）、Rich Menu 圖片與部署腳本。
+
+**尚未驗證的部分**：所有程式碼都只在本機以 mock 引擎與模擬資料測過。真實模型的速度與準確度、以及 LINE 端的實際行為（webhook、postback、rich menu、LIFF 登入），都要等 OCI 機器開起來才能確認。

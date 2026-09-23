@@ -86,8 +86,63 @@ sqlite.exec(`
     source_group_id  TEXT UNIQUE NOT NULL
   );
 
+  /*
+   * Doctor roster. Separate from doctor_group_mapping on purpose: this table
+   * states a personnel fact (which department someone belongs to), while the
+   * mapping table states a routing rule (which LINE group to notify). Most
+   * doctors have no group of their own, but their names are still needed --
+   * they are the dictionary that turns open-ended OCR into a closed-set match.
+   */
+  CREATE TABLE IF NOT EXISTS doctors (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name        TEXT UNIQUE NOT NULL,
+    department  TEXT NOT NULL,
+    aliases     TEXT NOT NULL DEFAULT '[]',
+    updated_at  TEXT NOT NULL
+  );
+
+  /* Every roster import keeps the previous state so it can be rolled back. */
+  CREATE TABLE IF NOT EXISTS roster_snapshots (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at  TEXT NOT NULL,
+    created_by  TEXT NOT NULL,
+    note        TEXT NOT NULL DEFAULT '',
+    payload     TEXT NOT NULL
+  );
+
+  /*
+   * A recognised case table waits here for a human to confirm before anything
+   * is queued for 07:30. If nobody answers by auto_adopt_at, the matched rows
+   * are adopted anyway -- silence must not turn into "nothing was sent".
+   */
+  CREATE TABLE IF NOT EXISTS dispatch_confirmations (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_group_id  TEXT NOT NULL,
+    message_id       TEXT NOT NULL,
+    dispatch_date    TEXT NOT NULL,
+    payload          TEXT NOT NULL,
+    status           TEXT NOT NULL DEFAULT 'PENDING'
+                     CHECK (status IN ('PENDING', 'CONFIRMED', 'AUTO_ADOPTED', 'CANCELLED')),
+    created_at       TEXT NOT NULL,
+    auto_adopt_at    TEXT NOT NULL,
+    resolved_at      TEXT,
+    resolved_by      TEXT
+  );
+
+  /*
+   * The 07:30 push sends an image, so a spreadsheet upload still needs a
+   * photograph to forward. Remembering the last image per group survives a
+   * restart, which an in-memory map would not.
+   */
+  CREATE TABLE IF NOT EXISTS group_last_image (
+    source_group_id  TEXT PRIMARY KEY,
+    message_id       TEXT NOT NULL,
+    created_at       TEXT NOT NULL
+  );
+
   CREATE INDEX IF NOT EXISTS idx_dispatch_date ON daily_dispatch_cache (dispatch_date);
   CREATE INDEX IF NOT EXISTS idx_events_group  ON group_events (source_group_id, date);
+  CREATE INDEX IF NOT EXISTS idx_confirm_status ON dispatch_confirmations (status, auto_adopt_at);
 `);
 
 // Old rows have no operational value and only make the confirmation UI noisy.
@@ -295,6 +350,131 @@ export const db = {
         )
         .run(groupId);
       return { success: true };
+    }
+  },
+
+  // --- Last Uploaded Image Per Group ---
+  group_last_image: {
+    async set(sourceGroupId, messageId) {
+      sqlite
+        .prepare(
+          `INSERT INTO group_last_image (source_group_id, message_id, created_at) VALUES (?, ?, ?)
+           ON CONFLICT (source_group_id) DO UPDATE SET
+             message_id = excluded.message_id,
+             created_at = excluded.created_at`
+        )
+        .run(sourceGroupId, messageId, nowIso());
+    },
+
+    async get(sourceGroupId) {
+      return sqlite.prepare('SELECT * FROM group_last_image WHERE source_group_id = ?').get(sourceGroupId) || null;
+    }
+  },
+
+  // --- Doctor Roster API ---
+  doctors: {
+    async getAll() {
+      return sqlite
+        .prepare('SELECT * FROM doctors ORDER BY department, name')
+        .all()
+        .map((row) => parseJsonColumns(row, ['aliases']));
+    },
+
+    async getByName(name) {
+      const row = sqlite.prepare('SELECT * FROM doctors WHERE name = ?').get(name);
+      return row ? parseJsonColumns(row, ['aliases']) : null;
+    },
+
+    /**
+     * Replaces the whole roster in one transaction, keeping a snapshot of the
+     * previous state first. A roster written wrong is as damaging as a wrong
+     * dispatch, so it must always be reversible.
+     * @param {Array<{name: string, department: string, aliases?: string[]}>} entries
+     */
+    async replaceAll(entries, updatedBy = '未知人員', note = '') {
+      const previous = sqlite.prepare('SELECT name, department, aliases FROM doctors ORDER BY name').all();
+
+      const apply = sqlite.transaction(() => {
+        sqlite
+          .prepare('INSERT INTO roster_snapshots (created_at, created_by, note, payload) VALUES (?, ?, ?, ?)')
+          .run(nowIso(), updatedBy, note, JSON.stringify(previous));
+
+        sqlite.prepare('DELETE FROM doctors').run();
+        const insert = sqlite.prepare(
+          'INSERT INTO doctors (name, department, aliases, updated_at) VALUES (?, ?, ?, ?)'
+        );
+        for (const entry of entries) {
+          insert.run(
+            entry.name,
+            (entry.department || '').toUpperCase(),
+            JSON.stringify(entry.aliases || []),
+            nowIso()
+          );
+        }
+
+        // Keep the last 10 snapshots; older ones have no practical use.
+        sqlite
+          .prepare(
+            'DELETE FROM roster_snapshots WHERE id NOT IN (SELECT id FROM roster_snapshots ORDER BY id DESC LIMIT 10)'
+          )
+          .run();
+      });
+
+      apply();
+      return this.getAll();
+    },
+
+    async listSnapshots() {
+      return sqlite
+        .prepare('SELECT id, created_at, created_by, note FROM roster_snapshots ORDER BY id DESC')
+        .all();
+    },
+
+    async restoreSnapshot(snapshotId, restoredBy = '未知人員') {
+      const snapshot = sqlite.prepare('SELECT * FROM roster_snapshots WHERE id = ?').get(snapshotId);
+      if (!snapshot) throw new Error('Snapshot not found');
+
+      const entries = JSON.parse(snapshot.payload).map((row) => ({
+        name: row.name,
+        department: row.department,
+        aliases: JSON.parse(row.aliases || '[]')
+      }));
+
+      return this.replaceAll(entries, restoredBy, `還原自快照 #${snapshotId}`);
+    }
+  },
+
+  // --- Dispatch Confirmation API ---
+  dispatch_confirmations: {
+    async create({ sourceGroupId, messageId, dispatchDate, payload, autoAdoptAt }) {
+      const info = sqlite
+        .prepare(
+          `INSERT INTO dispatch_confirmations
+             (source_group_id, message_id, dispatch_date, payload, status, created_at, auto_adopt_at)
+           VALUES (?, ?, ?, ?, 'PENDING', ?, ?)`
+        )
+        .run(sourceGroupId, messageId, dispatchDate, JSON.stringify(payload), nowIso(), autoAdoptAt);
+      return this.getById(info.lastInsertRowid);
+    },
+
+    async getById(id) {
+      const row = sqlite.prepare('SELECT * FROM dispatch_confirmations WHERE id = ?').get(id);
+      return row ? { ...row, payload: JSON.parse(row.payload) } : null;
+    },
+
+    /** Pending rows whose grace period has elapsed. */
+    async getDueForAutoAdopt() {
+      return sqlite
+        .prepare("SELECT * FROM dispatch_confirmations WHERE status = 'PENDING' AND auto_adopt_at <= ?")
+        .all(nowIso())
+        .map((row) => ({ ...row, payload: JSON.parse(row.payload) }));
+    },
+
+    async resolve(id, status, resolvedBy) {
+      sqlite
+        .prepare('UPDATE dispatch_confirmations SET status = ?, resolved_at = ?, resolved_by = ? WHERE id = ?')
+        .run(status, nowIso(), resolvedBy, id);
+      return this.getById(id);
     }
   },
 

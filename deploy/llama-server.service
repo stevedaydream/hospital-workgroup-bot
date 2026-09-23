@@ -1,0 +1,44 @@
+[Unit]
+Description=llama.cpp server (Gemma 4 E4B, vision enabled)
+After=network-online.target
+Wants=network-online.target
+Before=hospital-bot.service
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/llama.cpp
+
+# --mmproj is what makes the model able to see; without it Gemma 4 is
+# text-only and every image request fails.
+# --parallel 1 matches the application-side serial queue: on 2 cores,
+# concurrent requests only compete for the same RAM and cache.
+ExecStart=/opt/llama.cpp/build/bin/llama-server \
+  --model /opt/models/gemma-4-E4B-Q4_K_M.gguf \
+  --mmproj /opt/models/mmproj-gemma-4-E4B-f16.gguf \
+  --host 127.0.0.1 \
+  --port 8080 \
+  --ctx-size 8192 \
+  --threads 2 \
+  --parallel 1 \
+  --no-warmup
+
+Restart=always
+RestartSec=10
+
+# Keeping the weights resident is both a latency decision and the reason this
+# instance never looks idle to Oracle's reclaim policy (memory stays >20%).
+Environment=LLAMA_ARG_NO_MMAP=0
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=llama-server
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadOnlyPaths=/opt/models
+
+[Install]
+WantedBy=multi-user.target

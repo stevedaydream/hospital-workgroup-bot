@@ -11,6 +11,11 @@ node_modules/
 .env.production.local
 .dev.vars
 
+# SSH / private keys — never commit these
+*.key
+*.pem
+deploy/ssh-key-*
+
 # Local database (SQLite)
 data/
 db.json

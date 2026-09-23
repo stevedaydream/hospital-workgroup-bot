@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2500" height="1686" viewBox="0 0 2500 1686">
+  <rect width="2500" height="1686" fill="#f6f4ef"/>
+  <line x1="833" y1="0" x2="833" y2="1686" stroke="#d8d3c7" stroke-width="3"/>
+<line x1="1667" y1="0" x2="1667" y2="1686" stroke="#d8d3c7" stroke-width="3"/>
+<line x1="0" y1="843" x2="2500" y2="843" stroke="#191b20" stroke-width="5"/>
+  
+    <text x="64" y="200" font-family="Consolas, Menlo, monospace" font-size="40"
+          letter-spacing="7" fill="#8d9199">NOTES</text>
+    <text x="64" y="470" font-family="PMingLiU, Songti TC, Noto Serif TC, serif" font-size="112"
+          letter-spacing="10" fill="#191b20">交班公告</text>
+    
+    <text x="64" y="630" font-family="Microsoft JhengHei, PingFang TC, Noto Sans TC, sans-serif" font-size="46"
+          fill="#8d9199">共同編輯注意事項</text>
+
+    <text x="897" y="200" font-family="Consolas, Menlo, monospace" font-size="40"
+          letter-spacing="7" fill="#8d9199">DISPATCH</text>
+    <text x="897" y="470" font-family="PMingLiU, Songti TC, Noto Serif TC, serif" font-size="112"
+          letter-spacing="10" fill="#c9256a">今日分流</text>
+    <path d="M 897 508 C 987 498, 1077 518, 1165 504 S 1257 494, 1583 508"
+         fill="none" stroke="#c9256a" stroke-width="7" stroke-linecap="round" opacity="0.9"/>
+    <text x="897" y="630" font-family="Microsoft JhengHei, PingFang TC, Noto Sans TC, sans-serif" font-size="46"
+          fill="#8d9199">確認明早轉發對象</text>
+
+    <text x="1731" y="200" font-family="Consolas, Menlo, monospace" font-size="40"
+          letter-spacing="7" fill="#8d9199">CALENDAR</text>
+    <text x="1731" y="470" font-family="PMingLiU, Songti TC, Noto Serif TC, serif" font-size="112"
+          letter-spacing="10" fill="#191b20">晨會行事曆</text>
+    
+    <text x="1731" y="630" font-family="Microsoft JhengHei, PingFang TC, Noto Sans TC, sans-serif" font-size="46"
+          fill="#8d9199">報告輪序與活動</text>
+
+    <text x="64" y="1043" font-family="Consolas, Menlo, monospace" font-size="40"
+          letter-spacing="7" fill="#8d9199">UPLOAD</text>
+    <text x="64" y="1313" font-family="PMingLiU, Songti TC, Noto Serif TC, serif" font-size="112"
+          letter-spacing="10" fill="#191b20">怎麼上傳</text>
+    
+    <text x="64" y="1473" font-family="Microsoft JhengHei, PingFang TC, Noto Sans TC, sans-serif" font-size="46"
+          fill="#8d9199">照片與檔案說明</text>
+
+    <text x="897" y="1043" font-family="Consolas, Menlo, monospace" font-size="40"
+          letter-spacing="7" fill="#8d9199">CANCEL</text>
+    <text x="897" y="1313" font-family="PMingLiU, Songti TC, Noto Serif TC, serif" font-size="112"
+          letter-spacing="10" fill="#c9256a">取消轉發</text>
+    <path d="M 897 1351 C 987 1341, 1077 1361, 1165 1347 S 1257 1337, 1583 1351"
+         fill="none" stroke="#c9256a" stroke-width="7" stroke-linecap="round" opacity="0.9"/>
+    <text x="897" y="1473" font-family="Microsoft JhengHei, PingFang TC, Noto Sans TC, sans-serif" font-size="46"
+          fill="#8d9199">停掉明早的發送</text>
+
+    <text x="1731" y="1043" font-family="Consolas, Menlo, monospace" font-size="40"
+          letter-spacing="7" fill="#8d9199">ADMIN</text>
+    <text x="1731" y="1313" font-family="PMingLiU, Songti TC, Noto Serif TC, serif" font-size="112"
+          letter-spacing="10" fill="#191b20">管理設定</text>
+    
+    <text x="1731" y="1473" font-family="Microsoft JhengHei, PingFang TC, Noto Sans TC, sans-serif" font-size="46"
+          fill="#8d9199">群組對照與名冊</text>
+  <rect x="2" y="2" width="2496" height="1682" fill="none" stroke="#191b20" stroke-width="5"/>
+</svg>

@@ -1,9 +1,10 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { serve } from '@hono/node-server';
+import { serveStatic } from '@hono/node-server/serve-static';
 import dotenv from 'dotenv';
-import path from 'path';
 import { db } from './db.js';
+import { requireLiffAuth, requireAdminKey } from './auth.js';
 import { verifySignature, handleWebhookEvent, pushMessage } from './line.js';
 import { initializeScheduler, runDailyDispatch, runDailyReminders } from './scheduler.js';
 
@@ -14,6 +15,26 @@ const PORT = process.env.PORT || 3000;
 
 // Enable CORS
 app.use('*', cors());
+
+// ----------------------------------------------------
+// API Authentication
+// ----------------------------------------------------
+// /api/config is fetched before liff.init() can possibly run, so it stays open
+// -- it only exposes public LIFF IDs. /api/users/sync is the registration door
+// and therefore accepts verified-but-unregistered users. Everything else needs
+// a verified token belonging to someone already in the roster.
+const OPEN_API_PATHS = new Set(['/api/config']);
+const liffAuth = requireLiffAuth();
+const registrationAuth = requireLiffAuth({ allowUnregistered: true });
+const adminAuth = requireAdminKey();
+
+app.use('/api/*', async (c, next) => {
+  const pathname = new URL(c.req.url).pathname;
+  if (OPEN_API_PATHS.has(pathname)) return next();
+  if (pathname === '/api/test-cron') return adminAuth(c, next);
+  if (pathname === '/api/users/sync') return registrationAuth(c, next);
+  return liffAuth(c, next);
+});
 
 // Event de-duplication set to prevent reprocessing the same retry request
 const processedEventKeys = new Set();
@@ -90,14 +111,11 @@ app.post('/webhook', async (c) => {
         processedEventKeys.delete(oldestKey);
       }
 
-      // Execute handler in background without blocking the response
-      const promise = handleWebhookEvent(event).catch(error => {
+      // Execute handler in background without blocking the response. LINE
+      // expects a reply within seconds; OCR and pushes take much longer.
+      handleWebhookEvent(event).catch(error => {
         console.error('[Webhook] Async event execution failed:', error);
       });
-
-      if (c.executionCtx) {
-        c.executionCtx.waitUntil(promise);
-      }
     }
   } catch (error) {
     console.error('[Webhook] Error parsing webhook payload:', error);
@@ -312,15 +330,10 @@ app.post('/api/dispatch-cache/confirm', async (c) => {
       }
       confirmText += `（設定同仁：${userStr}）`;
       
-      const promise = pushMessage(sourceId, {
+      await pushMessage(sourceId, {
         type: 'text',
         text: confirmText
       });
-      if (c.executionCtx) {
-        c.executionCtx.waitUntil(promise);
-      } else {
-        await promise;
-      }
     }
     
     return c.json({ success: true });
@@ -496,16 +509,12 @@ app.post('/api/rotations/generate', async (c) => {
   }
 });
 
-// Trigger the daily cron task manually
+// Trigger the daily cron task manually (requires ADMIN_API_KEY -- this sends
+// real images to every confirmed group).
 app.get('/api/test-cron', async (c) => {
   console.log('[Manual Trigger] Running daily jobs.');
   const dispatchResult = await runDailyDispatch();
-  const promise = runDailyReminders();
-  if (c.executionCtx) {
-    c.executionCtx.waitUntil(promise);
-  } else {
-    await promise;
-  }
+  await runDailyReminders();
   return c.json({
     message: 'Manual jobs triggered.',
     dispatchResult
@@ -513,42 +522,30 @@ app.get('/api/test-cron', async (c) => {
 });
 
 // ----------------------------------------------------
-// Local Development Server Execution
+// Static Files (LIFF pages, CSS, dispatched images)
 // ----------------------------------------------------
-if (process.env.NODE_ENV !== 'production') {
-  // Serve static files locally
-  try {
-    const { serveStatic } = await import('@hono/node-server/serve-static');
-    app.use('/*', serveStatic({ root: './public' }));
-  } catch (e) {
-    console.warn('Local serveStatic middleware not loaded:', e.message);
-  }
+// Served in every environment. On Cloudflare Workers this needed an [assets]
+// binding that was never configured, which is why the LIFF pages were
+// unreachable in production.
+app.use('/*', serveStatic({ root: './public' }));
 
-  serve({
+// ----------------------------------------------------
+// Server Startup
+// ----------------------------------------------------
+serve(
+  {
     fetch: app.fetch,
     port: parseInt(PORT)
-  }, () => {
-    console.log(`=================================================`);
-    console.log(`Hospital Workgroup Bot server running locally on port ${PORT}`);
-    console.log(`Local LIFF Notes URL: http://localhost:${PORT}/liff/notes`);
-    console.log(`Local LIFF Dispatch URL: http://localhost:${PORT}/liff/dispatch`);
-    console.log(`=================================================`);
-    
-    // Initialize Node-cron Scheduler locally
-    initializeScheduler();
-  });
-}
-
-// ----------------------------------------------------
-// Cloudflare Workers Entrypoint Exports
-// ----------------------------------------------------
-export default {
-  async fetch(request, env, ctx) {
-    return app.fetch(request, env, ctx);
   },
-  async scheduled(event, env, ctx) {
-    console.log('[Cloudflare Cron] Scheduled event triggered.');
-    ctx.waitUntil(runDailyDispatch());
-    ctx.waitUntil(runDailyReminders());
+  () => {
+    const baseUrl = process.env.BASE_URL || `http://localhost:${PORT}`;
+    console.log('=================================================');
+    console.log(`Hospital Workgroup Bot listening on port ${PORT}`);
+    console.log(`Webhook URL : ${baseUrl}/webhook`);
+    console.log(`LIFF Notes  : ${baseUrl}/liff/notes`);
+    console.log(`LIFF Admin  : ${baseUrl}/liff/admin`);
+    console.log('=================================================');
+
+    initializeScheduler();
   }
-};
+);

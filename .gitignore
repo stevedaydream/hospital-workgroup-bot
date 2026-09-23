@@ -11,7 +11,8 @@ node_modules/
 .env.production.local
 .dev.vars
 
-# Local database file
+# Local database (SQLite)
+data/
 db.json
 
 # Log files

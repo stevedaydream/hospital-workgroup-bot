@@ -44,6 +44,7 @@
 
   <!-- LINE LIFF SDK -->
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script src="/js/api.js"></script>
   <script>
     let userName = '未知同仁';
     let liffParams = {
@@ -99,6 +100,8 @@
         const config = await resConfig.json();
         
         await liff.init({ liffId: config.LIFF_DISPATCH_ID });
+
+        if (liff.isLoggedIn()) window.__setIdToken(liff.getIDToken());
         
         if (liff.isLoggedIn()) {
           const profile = await liff.getProfile();

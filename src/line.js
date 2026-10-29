@@ -660,7 +660,7 @@ async function triggerBatchProcess(sourceId) {
 
     // Decision 8·9: the fallback stays automatic, but the group must be told
     // that the photos left the local machine.
-    if (ocrResult.fallbackReason && ocrResult.provider === 'gemini') {
+    if (ocrResult.fallbackReason) {
       await pushMessage(sourceId, {
         type: "text",
         text: "☁️ 本機 AI 暫時無法連線，本次照片已改上傳至 Google Gemini 雲端辨識。"

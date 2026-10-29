@@ -1,9 +1,12 @@
-# 本機部署手冊：Windows + Tailscale Funnel
+# 本機部署手冊：Windows + Tailscale Funnel + Vercel 中繼
 
 Bot 與 Strata 跑在同一台電腦（`steve`）。OCI 因為一直顯示沒有容量可建立，暫緩；`deploy/README.md` 保留給日後搬上雲端時使用。
 
 ```
-LINE 平台 ──HTTPS──▶ Tailscale Funnel (steve.tailb73635.ts.net:10000)
+LINE 平台 ──HTTPS──▶ Vercel 中繼 (relay-xi-pied.vercel.app，東京 hnd1)
+                         │  連不上就在數秒內重試
+                         ▼
+                 Tailscale Funnel (steve.tailb73635.ts.net:10000)
                          │
                          ▼
                  Bot  127.0.0.1:3000 ─┬─▶ Port Monitor 127.0.0.1:43922（有專案金鑰時，會拉起模型）
@@ -27,7 +30,7 @@ LINE 平台 ──HTTPS──▶ Tailscale Funnel (steve.tailb73635.ts.net:10000
 
 | 變數 | 值 |
 |---|---|
-| `BASE_URL` | `https://steve.tailb73635.ts.net:10000` |
+| `BASE_URL` | `https://relay-xi-pied.vercel.app`（Vercel 中繼，見第 2.1 節） |
 | `LOCAL_AI_BASE_URL` | `http://127.0.0.1:4000`（Local AI Gateway） |
 | `LOCAL_AI_MODELS` | `local,qwen3.6`（兩條路線共用；Port Monitor 的模型 id／別名須與此相同） |
 | `PORT_MONITOR_API_KEY` | Port Monitor 桌面 →「取得連線設定」，為本 bot 建立專案金鑰並設定優先順序；留空就不經 Port Monitor |
@@ -50,11 +53,26 @@ tailscale funnel status
 
 開放後整個 bot 都在公網上，安全性靠：LINE webhook 簽章驗證、LIFF ID Token + `users` 白名單、管理端點的 `ADMIN_API_KEY`。**不要在這台設 `AUTH_DISABLED=true`。**
 
+## 2.1 Vercel 中繼（LINE 的對外入口）
+
+實測 LINE 的 webhook 直接連 Funnel 時，約 1/6 會 TLS 握手失敗（`Session protocol negotiation failure`），LINE 要等好幾分鐘才重送，群組因此慢了 6 分鐘。改成 LINE 連 Vercel、Vercel 再轉給 Funnel 後，連測 30 次全部成功。
+
+- 程式在 `relay/`：`api/proxy.js` 原封不動轉發所有請求（bot 仍自行驗證 LINE 簽章），連線失敗在約 2.6 秒內重試最多 3 次；逾時不重試，避免新增類請求被送兩次。
+- Vercel 專案 `relay`（steve's projects），部署：
+
+```bash
+cd relay
+npx vercel deploy --prod --scope steves-projects-37bb3607
+```
+
+- Funnel 仍要開著：Vercel 是透過它連進這台電腦。
+- Vercel Hobby 方案限非商業用途。
+
 ## 3. LINE Developers Console
 
-把 `deploy/README.md` 第 9 節的網址前綴換成 `https://steve.tailb73635.ts.net:10000`：
+把 `deploy/README.md` 第 9 節的網址前綴換成 `https://relay-xi-pied.vercel.app`：
 
-- Webhook URL：`https://steve.tailb73635.ts.net:10000/webhook` →「Verify」應回 Success
+- Webhook URL：`https://relay-xi-pied.vercel.app/webhook` →「Verify」應回 Success
 - LIFF Endpoint：`.../liff/notes`、`.../liff/dispatch`、`.../liff/admin`、`.../liff/calendar`
 
 ## 4. 啟動與開機自動執行
@@ -83,6 +101,6 @@ Local AI Gateway 已有登入自動啟動的排程（「Local AI Gateway」）�
 ## 驗收清單
 
 - [ ] `curl http://127.0.0.1:3000/api/config` 回傳四個 LIFF ID
-- [ ] `curl https://steve.tailb73635.ts.net:10000/api/notes` 從**手機行動網路**（不在 tailnet）回 **401**
+- [ ] `curl https://relay-xi-pied.vercel.app/api/notes` 回 **401**
 - [ ] LINE Console Webhook「Verify」成功
 - [ ] 群組上傳一張 case 大表，啟動訊息顯示「本機 AI」，log 出現 `LOCAL local RAW RESPONSE`（或 `qwen3.6`），`data/hospital.db` 出現 `dispatch_date` 為明天的列

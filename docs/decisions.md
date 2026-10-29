@@ -45,6 +45,7 @@
 - **部署暫改本機（2026-10）**：OCI 一直顯示沒有容量可建立，bot 改跑在 Strata 那台電腦上，經 Tailscale Funnel 提供 LINE 需要的公網 HTTPS。沒有 Gemini key 時不做備援，以免 MOCK 結果被當成真資料發到群組。代價：電腦睡眠或關機即停止服務，07:30 推播也會錯過。
 - **本機模型備援（2026-10）**：bot 改連 Local AI Gateway，依序試 Strata → Qwen3.6（35B-A3B Q4_K_P，llama.cpp + mmproj，單卡）。兩者共用 GPU 不同時執行，gateway 不自動啟動，bot 只用正在跑的那個。
 - **經 Port Monitor 拉起模型（2026-10）**：bot 設了 Port Monitor 專案金鑰時先走 43922，由 Port Monitor 依優先順序拉起 Strata，放不下就改要 Qwen3.6；Port Monitor 沒開時退回 gateway（只用執行中的模型）。做法比照 LiveCatch ADR-007。
+- **對外入口改 Vercel 中繼（2026-10）**：LINE 直連 Funnel 約 1/6 TLS 握手失敗、重送要等數分鐘。改由 Vercel（`relay/`，東京）接 LINE 再轉 Funnel，連測 30 次全成功。未選 Supabase Edge Function：預設網域會把 HTML 改成純文字（LIFF 壞掉）且網址有 `/functions/v1` 前綴。
 - **P2 原計畫（未開始）**：llama.cpp + Gemma 4 E4B + mmproj、provider 抽象、GBNF、map-reduce、fallback、輕量驗證。
 - **P3 未開始**：`doctors` 主檔與匯入入口、檔案直解、確認卡片。
 - **P4（新增，待排）**：Rich Menu 與 LIFF 介面改版。

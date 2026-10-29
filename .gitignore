@@ -30,3 +30,6 @@ yarn-error.log*
 *.njsproj
 *.sln
 *.sw?
+
+# Vercel CLI link for the relay
+.vercel/

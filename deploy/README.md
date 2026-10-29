@@ -1,7 +1,7 @@
 # P1 部署手冊：Oracle Cloud Always Free (ARM)
 
 目標機器：OCI Ampere A1，**2 OCPU / 12GB RAM**，Ubuntu 22.04 或 24.04 (aarch64)。
-本階段 AI 仍使用 Gemini 雲端；本地 Gemma 4 E4B 屬於 P2。
+AI 辨識先走家中電腦的 Strata（經 Tailscale，見第 12 節），連不上時自動備援到 Gemini 雲端。
 
 ---
 
@@ -93,7 +93,8 @@ sudo systemctl reload caddy
 | `LINE_LOGIN_CHANNEL_ID` | LINE Developers → **LINE Login** channel 的 Channel ID（LIFF App 掛在這個 channel 底下）。沒填的話所有 `/api/*` 一律拒絕。 |
 | `LIFF_*_ID` | 四個 LIFF App 的 ID |
 | `ADMIN_API_KEY` | 自己產生：`openssl rand -hex 24` |
-| `GEMINI_API_KEY` | Google AI Studio |
+| `STRATA_BASE_URL` | 家中電腦的 Tailscale serve 網址，例如 `https://steve.tailb73635.ts.net:8444`（見第 12 節） |
+| `GEMINI_API_KEY` | Google AI Studio（Strata 連不上時的備援） |
 
 ## 8. 啟動服務
 
@@ -138,6 +139,40 @@ mkdir -p ~/backups
 
 `public/images/` 裡的圖片沒有備份——它們只在隔天早上推播時用得到，過期即無價值。
 
+## 12. Tailscale 連到家中電腦的 Strata
+
+Strata 只聽 `127.0.0.1:8080`，不對外開埠；伺服器加入同一個 tailnet 後經 `tailscale serve` 存取。
+
+**家中電腦（已設定）**
+
+```powershell
+tailscale serve --bg --https=8444 http://127.0.0.1:8080   # 只在 tailnet 內可見，不是 funnel
+tailscale serve status
+# 取消：tailscale serve --https=8444 off
+```
+
+Strata 有 DNS rebinding 防護，會擋掉非 localhost 的 Host。`C:\AI\providers\Strata\strata-iq3_xxs.json` 已加入：
+
+```json
+"allowed_hosts": ["steve.tailb73635.ts.net", "steve.tailb73635.ts.net:8444"]
+```
+
+改完要重啟 Strata 才生效（`Stop-Uncensored.cmd` → `Start-Uncensored.cmd`）。換模型或重裝後若設定檔被覆寫，Tailscale 網址會回 403 `forbidden`，補回這行即可。
+
+**OCI 伺服器**
+
+```bash
+curl -fsSL https://tailscale.com/install.sh | sh
+sudo tailscale up --hostname=hospital-bot      # 依提示用同一個帳號登入
+curl https://steve.tailb73635.ts.net:8444/health   # 應回 {"status": "ok", ... "service": "strata"}
+```
+
+建議到 Tailscale 管理後台把 `hospital-bot` 這台設成 **Disable key expiry**，否則 180 天後金鑰過期，會無聲地一直走 Gemini 備援。
+
+**行為**
+- 電腦關機、Strata 沒開、逾時（`STRATA_TIMEOUT_MS`，預設 240 秒）都會自動改走 Gemini，並在群組發一則「照片已改上傳至雲端」的提示。
+- 實測單張 case 大表約 20～30 秒。
+
 ---
 
 ## 驗收清單
@@ -146,5 +181,6 @@ mkdir -p ~/backups
 - [ ] `curl https://你的子網域.duckdns.org/api/notes` 回傳 **401**（沒帶 token 就該被擋）
 - [ ] `curl "https://你的子網域.duckdns.org/api/test-cron?key=你的ADMIN_API_KEY"` 回傳 JSON（**注意：這會真的發送訊息**）
 - [ ] 手機在 LINE 群組點開「共同編輯注意事項」，LIFF 頁面能正常讀寫
+- [ ] 伺服器上 `curl https://steve.tailb73635.ts.net:8444/health` 回傳 `"service": "strata"`
 - [ ] `journalctl -u hospital-bot` 沒有 `Unauthorized` 之外的錯誤
 - [ ] 群組上傳一張圖片，`public/images/` 出現對應檔案，`data/hospital.db` 出現 `dispatch_date` 為明天的列

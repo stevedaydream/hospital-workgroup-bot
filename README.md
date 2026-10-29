@@ -19,7 +19,7 @@
 | 執行環境 | Node.js 20+ / Hono（`@hono/node-server`） |
 | 資料庫 | SQLite 單檔（`data/hospital.db`，WAL） |
 | 排程 | `node-cron`，每日 07:30 **Asia/Taipei** |
-| AI 辨識 | Google Gemini（P2 將改為本機 Gemma 4 E4B，Gemini 降為自動備援） |
+| AI 辨識 | 家中電腦的 Strata（經 Tailscale 連線），失敗時自動備援到 Google Gemini |
 | 對外 | DuckDNS + Caddy（Let's Encrypt） |
 | API 驗證 | LINE ID Token（LIFF）／`ADMIN_API_KEY`（管理端點） |
 
@@ -41,7 +41,10 @@ hospital-workgroup-bot/
 │   ├── util/date.js        # 台灣時區日期工具（所有日期都必須經過這裡）
 │   ├── db.js               # SQLite 資料層
 │   ├── auth.js             # LINE ID Token 驗證
-│   ├── gemini.js           # 影像辨識（Gemini，P2 會抽象成可切換的 provider）
+│   ├── ai.js               # 影像辨識入口：先走 Strata，失敗自動 fallback 到 Gemini
+│   ├── strata.js           # Strata provider（OpenAI 相容 API，經 Tailscale）
+│   ├── gemini.js           # Gemini provider
+│   ├── prompts.js          # 各 provider 共用的 prompt 與結果正規化
 │   ├── line.js             # Webhook、簽章校驗、Flex Message
 │   ├── scheduler.js        # 07:30 轉發與 @ 提醒
 │   └── index.js            # 伺服器進入點與 API 路由
@@ -60,6 +63,7 @@ cp .env.example .env     # 至少填 LINE 憑證；本地可設 AUTH_DISABLED=tr
 npm run dev              # http://localhost:3000
 ```
 
+- `STRATA_BASE_URL` 留空時不走本機 AI；本地開發可直接填 `http://127.0.0.1:8080`。
 - `GEMINI_API_KEY` 留空或填 `placeholder` 時，辨識會走 **MOCK 模式**，不需 API Key 即可調試完整流程。
 - `AUTH_DISABLED=true` 會關閉所有 `/api/*` 的驗證，**僅限本機**。伺服器上設這個等於把病房公告與群組 ID 公開。
 - 資料庫會在首次啟動時於 `data/hospital.db` 自動建立，預設是空的（不再塞入含病人姓名的假資料）。

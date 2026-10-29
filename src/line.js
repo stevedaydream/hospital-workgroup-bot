@@ -37,6 +37,7 @@ export function verifySignature(rawBody, signature) {
 // LINE API Helpers
 // ----------------------------------------------------
 export async function replyMessage(replyToken, messages) {
+  const startedAt = Date.now();
   try {
     const response = await fetch('https://api.line.me/v2/bot/message/reply', {
       method: 'POST',
@@ -53,6 +54,8 @@ export async function replyMessage(replyToken, messages) {
     if (!response.ok) {
       const errorText = await response.text();
       console.error('LINE reply error:', errorText);
+    } else {
+      console.log(`[Reply] sent in ${Date.now() - startedAt}ms`);
     }
   } catch (error) {
     console.error('Error sending LINE reply:', error);
@@ -791,7 +794,11 @@ async function triggerBatchProcess(sourceId) {
 // Webhook Web Entry
 // ----------------------------------------------------
 export async function handleWebhookEvent(event) {
-  console.log(`[Webhook Event] type: ${event.type}, source: ${JSON.stringify(event.source)}`);
+  // Delay from the user sending to us receiving; a redelivery means LINE's
+  // first attempt failed, which is where long waits usually come from.
+  const delayMs = event.timestamp ? Date.now() - event.timestamp : null;
+  const redelivery = event.deliveryContext?.isRedelivery ? ', REDELIVERY' : '';
+  console.log(`[Webhook Event] ${new Date().toISOString()} type: ${event.type}, delay: ${delayMs}ms${redelivery}, source: ${JSON.stringify(event.source)}`);
 
   if (event.type === 'join') {
     // Reply with main menu on group join

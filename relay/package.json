@@ -1,0 +1,8 @@
+{
+  "name": "hospital-bot-relay",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "22.x"
+  }
+}

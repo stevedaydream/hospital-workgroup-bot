@@ -3,7 +3,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import dotenv from 'dotenv';
 import { db } from './db.js';
-import { analyzeCaseImage, analyzeMultipleImages } from './gemini.js';
+import { analyzeCaseImage, analyzeMultipleImages, primaryProviderLabel } from './ai.js';
 
 dotenv.config();
 
@@ -644,7 +644,7 @@ async function triggerBatchProcess(sourceId) {
   try {
     await pushMessage(sourceId, {
       type: "text",
-      text: `⚙️ 收集完畢（共 ${session.buffers.length} 張照片），正在使用 Gemini AI 分析辨識中，請稍候...`
+      text: `⚙️ 收集完畢（共 ${session.buffers.length} 張照片），正在使用${primaryProviderLabel}分析辨識中，請稍候...`
     });
 
     let ocrResult;
@@ -657,6 +657,15 @@ async function triggerBatchProcess(sourceId) {
     }
 
     console.log('Batch Analysis Result:', ocrResult);
+
+    // Decision 8·9: the fallback stays automatic, but the group must be told
+    // that the photos left the local machine.
+    if (ocrResult.fallbackReason && ocrResult.provider === 'gemini') {
+      await pushMessage(sourceId, {
+        type: "text",
+        text: "☁️ 本機 AI 暫時無法連線，本次照片已改上傳至 Google Gemini 雲端辨識。"
+      });
+    }
 
     if (ocrResult.type === 'WARD_NOTE') {
       // --- 🔴 WARD_NOTE Pipeline: Auto-Create Notices ---

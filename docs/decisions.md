@@ -41,6 +41,7 @@
 ## 階段狀態
 
 - **P1 已完成**：單機化、SQLite、時區與 `dispatch_date`、API 驗證、部署檔。AI 仍為 Gemini。
-- **P2 未開始**：llama.cpp + Gemma 4 E4B + mmproj、provider 抽象、GBNF、map-reduce、fallback、輕量驗證。
+- **P2 方向調整（2026-10）**：本地推論改由家中電腦的 Strata（OpenAI 相容 API，Qwen 視覺模型）承擔，OCI 經 Tailscale 連過去；Gemini 保留為自動備援並在群組明示。理由：家中電腦實測單圖約 20～30 秒，遠快於 2 核 ARM 的估計值，且不需在 OCI 上跑 llama.cpp。代價：電腦關機時整批走雲端。
+- **P2 原計畫（未開始）**：llama.cpp + Gemma 4 E4B + mmproj、provider 抽象、GBNF、map-reduce、fallback、輕量驗證。
 - **P3 未開始**：`doctors` 主檔與匯入入口、檔案直解、確認卡片。
 - **P4（新增，待排）**：Rich Menu 與 LIFF 介面改版。

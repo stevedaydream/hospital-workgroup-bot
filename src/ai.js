@@ -5,10 +5,10 @@ import * as gemini from './gemini.js';
 // back to Gemini when none of them answers. The result carries `provider` so
 // the caller can tell the group when photos were sent to the cloud (decision 8·9).
 
-async function withFallback(label, localCall, geminiCall) {
+async function withFallback(label, localCall, geminiCall, onAttempt) {
   if (local.localAiEnabled) {
     try {
-      const result = await localCall();
+      const result = await localCall(onAttempt);
       return { ...result, provider: local.modelLabel(result.model) };
     } catch (error) {
       // Mock output would be written to the DB and pushed to groups as if it
@@ -18,22 +18,32 @@ async function withFallback(label, localCall, geminiCall) {
         throw new Error(`本機 AI 辨識失敗，且未設定雲端備援: ${error.message}`);
       }
       console.error(`AI Engine [LOCAL ${label} FAILED, falling back to Gemini]:`, error.message);
+      onAttempt?.('gemini');
       return { ...(await geminiCall()), provider: 'gemini', fallbackReason: error.message };
     }
   }
+  onAttempt?.('gemini');
   return { ...(await geminiCall()), provider: gemini.geminiMockMode ? 'mock' : 'gemini' };
 }
 
-export function analyzeCaseImage(imageBuffer) {
+/**
+ * @param {Buffer} imageBuffer
+ * @param {(model: string) => void} [onAttempt] - called before each model is tried ('gemini' for the cloud)
+ */
+export function analyzeCaseImage(imageBuffer, onAttempt) {
   return withFallback('SINGLE',
-    () => local.analyzeCaseImage(imageBuffer),
-    () => gemini.analyzeCaseImage(imageBuffer));
+    attempt => local.analyzeCaseImage(imageBuffer, attempt),
+    () => gemini.analyzeCaseImage(imageBuffer),
+    onAttempt);
 }
 
-export function analyzeMultipleImages(imageBuffers) {
+export function analyzeMultipleImages(imageBuffers, onAttempt) {
   return withFallback('MULTI',
-    () => local.analyzeMultipleImages(imageBuffers),
-    () => gemini.analyzeMultipleImages(imageBuffers));
+    attempt => local.analyzeMultipleImages(imageBuffers, attempt),
+    () => gemini.analyzeMultipleImages(imageBuffers),
+    onAttempt);
 }
 
 export const primaryProviderLabel = local.localAiEnabled ? '本機 AI' : 'Gemini AI';
+export const modelLabel = model => (model === 'gemini' ? 'Gemini' : local.modelLabel(model));
+export const isModelLoaded = model => (model === 'gemini' ? Promise.resolve(true) : local.isModelLoaded(model));

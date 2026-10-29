@@ -84,11 +84,12 @@ async function chatJson(route, model, imageBuffers, prompt) {
   return JSON.parse(match ? match[0] : text);
 }
 
-async function firstAvailable(imageBuffers, prompt) {
+async function firstAvailable(imageBuffers, prompt, onAttempt) {
   const failures = [];
   for (const route of routes) {
     for (const model of LOCAL_AI_MODELS) {
       try {
+        onAttempt?.(model);
         return { parsed: await chatJson(route, model, imageBuffers, prompt), model };
       } catch (error) {
         console.error(`AI Engine [${route.name} ${model} FAILED]:`, error.message);
@@ -105,17 +106,42 @@ async function firstAvailable(imageBuffers, prompt) {
 /**
  * Same contract as gemini.js analyzeCaseImage; also returns which local model answered.
  * @param {Buffer} imageBuffer
+ * @param {(model: string) => void} [onAttempt] - called before each model is tried
  */
-export async function analyzeCaseImage(imageBuffer) {
-  const { parsed, model } = await firstAvailable([imageBuffer], SINGLE_IMAGE_PROMPT);
+export async function analyzeCaseImage(imageBuffer, onAttempt) {
+  const { parsed, model } = await firstAvailable([imageBuffer], SINGLE_IMAGE_PROMPT, onAttempt);
   return { ...normalizeSingleResult(parsed), model };
 }
 
 /**
  * Same contract as gemini.js analyzeMultipleImages; also returns which local model answered.
  * @param {Buffer[]} imageBuffers
+ * @param {(model: string) => void} [onAttempt] - called before each model is tried
  */
-export async function analyzeMultipleImages(imageBuffers) {
-  const { parsed, model } = await firstAvailable(imageBuffers, MULTI_IMAGE_PROMPT);
+export async function analyzeMultipleImages(imageBuffers, onAttempt) {
+  const { parsed, model } = await firstAvailable(imageBuffers, MULTI_IMAGE_PROMPT, onAttempt);
   return { ...normalizeMultiResult(parsed), model };
+}
+
+// The gateway knows every model's provider and whether it is up, even when
+// Port Monitor started it, so it answers "loading or recognizing?" for the
+// progress page. Resolves to null when that cannot be determined.
+const GATEWAY_URL = (process.env.LOCAL_AI_BASE_URL || '').replace(/\/+$/, '');
+let modelOwners = null;
+
+export async function isModelLoaded(model) {
+  if (!GATEWAY_URL) return null;
+  try {
+    if (!modelOwners) {
+      const res = await fetch(`${GATEWAY_URL}/v1/models`, { signal: AbortSignal.timeout(3000) });
+      const { data } = await res.json();
+      modelOwners = Object.fromEntries(data.map(m => [m.id, m.owned_by]));
+    }
+    const provider = modelOwners[model];
+    if (!provider) return null;
+    const res = await fetch(`${GATEWAY_URL}/providers`, { signal: AbortSignal.timeout(3000) });
+    return Boolean((await res.json())[provider]?.ready);
+  } catch {
+    return null;
+  }
 }

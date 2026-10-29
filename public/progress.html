@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>辨識進度</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <style>
+    .progress-head {
+      text-align: center;
+      margin: 8px 0 20px;
+    }
+    .progress-head h1 {
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+    .progress-head p {
+      margin-top: 6px;
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    .timer {
+      text-align: center;
+      font-size: 56px;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0.04em;
+      line-height: 1;
+    }
+    .timer-caption {
+      text-align: center;
+      margin-top: 8px;
+      font-size: 13px;
+      color: var(--text-secondary);
+      min-height: 18px;
+    }
+
+    .bar {
+      margin: 20px 0 24px;
+      height: 8px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.06);
+      overflow: hidden;
+    }
+    .bar-fill {
+      height: 100%;
+      width: 0;
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--color-teal), var(--color-blue));
+      box-shadow: 0 0 12px var(--color-teal-glow);
+      transition: width 1s linear;
+    }
+    .bar.failed .bar-fill { background: var(--color-rose); box-shadow: 0 0 12px var(--color-rose-glow); }
+
+    .steps { list-style: none; display: grid; gap: 10px; }
+    .step {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      border: 1px solid var(--border-color);
+      background: rgba(255, 255, 255, 0.02);
+      color: var(--text-secondary);
+      font-size: 15px;
+      transition: var(--transition);
+    }
+    .step .dot {
+      flex: none;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      border: 2px solid rgba(255, 255, 255, 0.15);
+      display: grid;
+      place-items: center;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .step .detail { margin-left: auto; font-size: 12px; font-variant-numeric: tabular-nums; }
+    .step.active {
+      color: var(--text-primary);
+      border-color: var(--border-active);
+      background: rgba(13, 148, 136, 0.12);
+    }
+    .step.active .dot {
+      border-color: var(--border-active);
+      border-top-color: transparent;
+      animation: spin 0.9s linear infinite;
+    }
+    .step.complete { color: var(--text-primary); }
+    .step.complete .dot { border-color: var(--color-emerald); background: var(--color-emerald); color: #04130d; }
+    .step.complete .dot::after { content: '✓'; }
+    .step.skipped .dot { border-style: dashed; }
+    .step.error { color: var(--text-primary); border-color: var(--color-rose); background: rgba(244, 63, 94, 0.1); }
+    .step.error .dot { border-color: var(--color-rose); background: var(--color-rose); color: #fff; }
+    .step.error .dot::after { content: '!'; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .notice {
+      margin-top: 20px;
+      padding: 14px;
+      border-radius: 14px;
+      font-size: 14px;
+      line-height: 1.6;
+      display: none;
+      overflow-wrap: anywhere;
+    }
+    .notice.show { display: block; }
+    .notice.ok { background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.35); }
+    .notice.bad { background: rgba(244, 63, 94, 0.1); border: 1px solid rgba(244, 63, 94, 0.35); }
+
+    @media (prefers-reduced-motion: reduce) {
+      .step.active .dot { animation: none; border-top-color: var(--border-active); }
+      .bar-fill { transition: none; }
+    }
+  </style>
+</head>
+<body>
+  <main class="liff-container">
+    <header class="progress-head">
+      <h1>照片辨識進度</h1>
+      <p id="subtitle">讀取中…</p>
+    </header>
+
+    <div class="timer" id="timer" aria-live="off">0:00</div>
+    <div class="timer-caption" id="caption"></div>
+
+    <div class="bar" id="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+      <div class="bar-fill" id="bar-fill"></div>
+    </div>
+
+    <ol class="steps" id="steps">
+      <li class="step" data-stage="collecting"><span class="dot"></span>等待其他照片<span class="detail"></span></li>
+      <li class="step" data-stage="loading"><span class="dot"></span>載入 AI 模型<span class="detail"></span></li>
+      <li class="step" data-stage="recognizing"><span class="dot"></span>AI 辨識中<span class="detail"></span></li>
+      <li class="step" data-stage="done"><span class="dot"></span>結果送回群組<span class="detail"></span></li>
+    </ol>
+
+    <div class="notice" id="notice" role="status"></div>
+  </main>
+
+  <script>
+    const ORDER = ['collecting', 'loading', 'recognizing', 'done'];
+    const POLL_MS = 2000;
+    const jobId = new URLSearchParams(location.search).get('job');
+
+    let view = null;        // last response from the server
+    let fetchedAt = 0;      // when it arrived, to keep the clock ticking between polls
+    let sawLoading = false; // the loading step only counts if the model actually had to load
+    let lastActive = null;  // stage seen running before a failure
+    let pollTimer = null;
+
+    const $ = id => document.getElementById(id);
+
+    function formatClock(totalSeconds) {
+      const s = Math.max(0, Math.round(totalSeconds));
+      return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+    }
+
+    function formatRemaining(seconds) {
+      if (seconds <= 20) return '即將完成';
+      if (seconds < 60) return `預計還要約 ${Math.ceil(seconds / 10) * 10} 秒`;
+      return `預計還要約 ${Math.ceil(seconds / 60)} 分鐘`;
+    }
+
+    function render() {
+      if (!view) return;
+      const drift = view.finished ? 0 : (Date.now() - fetchedAt) / 1000;
+      const elapsed = view.elapsedSeconds + drift;
+      const remaining = Math.max(0, view.remainingSeconds - drift);
+
+      $('timer').textContent = formatClock(elapsed);
+
+      const bar = $('bar');
+      bar.classList.toggle('failed', view.stage === 'failed');
+      const pct = view.stage === 'done' ? 100
+        : view.stage === 'failed' ? 100
+        : Math.min(95, (elapsed / (elapsed + remaining || 1)) * 100);
+      $('bar-fill').style.width = `${pct}%`;
+      bar.setAttribute('aria-valuenow', String(Math.round(pct)));
+
+      if (view.stage === 'done') $('caption').textContent = `共花費 ${formatClock(elapsed)}`;
+      else if (view.stage === 'failed') $('caption').textContent = '辨識未完成';
+      else $('caption').textContent = formatRemaining(remaining);
+    }
+
+    function renderSteps() {
+      const current = view.stage === 'failed' ? null : view.stage;
+      const currentIndex = ORDER.indexOf(current);
+      if (view.stage === 'loading') sawLoading = true;
+      if (current && current !== 'done') lastActive = current;
+
+      document.querySelectorAll('.step').forEach(el => {
+        const stage = el.dataset.stage;
+        const index = ORDER.indexOf(stage);
+        const detail = el.querySelector('.detail');
+        el.className = 'step';
+        detail.textContent = '';
+
+        if (view.stage === 'failed') {
+          // The step that was running when it failed (the server keeps only the outcome).
+          const failedAt = lastActive || (view.model ? 'recognizing' : 'collecting');
+          if (stage === failedAt) {
+            el.classList.add('error');
+          } else if (index < ORDER.indexOf(failedAt)) {
+            el.classList.add('complete');
+            if (stage === 'loading' && !sawLoading) {
+              el.classList.add('skipped');
+              detail.textContent = '已就緒';
+            }
+          }
+          return;
+        }
+
+        if (index < currentIndex) {
+          if (stage === 'loading' && !sawLoading) {
+            el.classList.add('complete', 'skipped');
+            detail.textContent = '已就緒';
+          } else {
+            el.classList.add('complete');
+          }
+        } else if (index === currentIndex) {
+          el.classList.add(stage === 'done' ? 'complete' : 'active');
+        }
+
+        if (stage === 'collecting' && view.imageCount) detail.textContent = `${view.imageCount} 張`;
+        if ((stage === 'loading' || stage === 'recognizing') && view.model && index <= currentIndex) {
+          detail.textContent = detail.textContent || view.model;
+        }
+      });
+
+      const notice = $('notice');
+      notice.className = 'notice';
+      if (view.stage === 'done') {
+        notice.classList.add('show', 'ok');
+        notice.textContent = `✅ 已辨識為「${view.resultLabel}」，結果已送到 LINE 群組，可以關閉此頁。`;
+      } else if (view.stage === 'failed') {
+        notice.classList.add('show', 'bad');
+        notice.textContent = `❌ ${view.error || '辨識失敗'}`;
+      }
+
+      $('subtitle').textContent = view.model
+        ? `共 ${view.imageCount} 張照片 · 使用 ${view.model}`
+        : `共 ${view.imageCount} 張照片`;
+    }
+
+    async function poll() {
+      try {
+        const res = await fetch(`/progress-api/${encodeURIComponent(jobId)}`, { cache: 'no-store' });
+        if (res.status === 404) {
+          stop('找不到這次辨識的進度，可能已超過 1 小時或系統曾重新啟動。');
+          return;
+        }
+        view = await res.json();
+        fetchedAt = Date.now();
+        renderSteps();
+        render();
+        if (view.finished) {
+          clearInterval(pollTimer);
+          return;
+        }
+      } catch {
+        // Transient network error: keep the clock running and retry next tick.
+      }
+    }
+
+    function stop(message) {
+      clearInterval(pollTimer);
+      $('subtitle').textContent = '';
+      $('timer').textContent = '—';
+      $('caption').textContent = '';
+      const notice = $('notice');
+      notice.className = 'notice show bad';
+      notice.textContent = message;
+    }
+
+    if (!jobId) {
+      stop('連結不完整，請從 LINE 訊息重新開啟。');
+    } else {
+      poll();
+      pollTimer = setInterval(poll, POLL_MS);
+      setInterval(render, 1000);
+    }
+  </script>
+</body>
+</html>

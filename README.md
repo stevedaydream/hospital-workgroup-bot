@@ -12,7 +12,7 @@
 
 ## 架構現況
 
-單一 Node.js 行程。目前跑在家中電腦，與 Strata 同機，經 Tailscale Funnel 對外（見 `deploy/LOCAL.md`）；Oracle Cloud 版本暫緩（`deploy/README.md`）：
+單一 Node.js 行程。目前跑在家中電腦，與 Strata 同機，經 Vercel 中繼 → Tailscale Funnel 對外（見 `deploy/LOCAL.md`）；Oracle Cloud 版本暫緩（`deploy/README.md`）：
 
 | 項目 | 選用 |
 |---|---|
@@ -20,7 +20,7 @@
 | 資料庫 | SQLite 單檔（`data/hospital.db`，WAL） |
 | 排程 | `node-cron`，每日 07:30 **Asia/Taipei** |
 | AI 辨識 | 本機模型（Strata，顯存不足時改 Qwen3.6），都失敗才備援到 Google Gemini |
-| 對外 | Tailscale Funnel（本機）／DuckDNS + Caddy（OCI，暫緩） |
+| 對外 | Vercel 中繼 → Tailscale Funnel（本機）／DuckDNS + Caddy（OCI，暫緩） |
 | API 驗證 | LINE ID Token（LIFF）／`ADMIN_API_KEY`（管理端點） |
 
 > 先前曾短暫遷往 Cloudflare Workers + Supabase。該版本無法運作（Workers 沒有檔案系統可寫入圖片、`public/` 缺少 assets binding 導致 LIFF 頁面無法服務、`node-cron` 不會啟動），已整批回退為單機架構。詳細的決策脈絡見 `docs/`。

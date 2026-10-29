@@ -535,7 +535,10 @@ app.use('/*', serveStatic({ root: './public' }));
 serve(
   {
     fetch: app.fetch,
-    port: parseInt(PORT)
+    port: parseInt(PORT),
+    // Public traffic arrives through a local reverse proxy (Tailscale Funnel or
+    // Caddy), so the app itself never needs to listen beyond loopback.
+    hostname: process.env.HOST || '127.0.0.1'
   },
   () => {
     const baseUrl = process.env.BASE_URL || `http://localhost:${PORT}`;

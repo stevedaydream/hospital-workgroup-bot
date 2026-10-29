@@ -24,6 +24,8 @@ LINE 平台 ──HTTPS──▶ Vercel 中繼 (relay-xi-pied.vercel.app，東�
 - **Gateway 路線**：Port Monitor 沒開（連不上）、沒設金鑰，或所有模型都失敗時使用。gateway 的模型不會自動啟動，只會用已經在跑的那一個；停機的模型約 2 秒就回 `provider_unavailable`。
 - 本機模型呼叫都不經過 Tailscale。
 
+Port Monitor 的「顯示卡協調」裡，`strata`（別名含 `local`）與 `qwen36`（別名 `qwen3.6`）都必須是**直接管理**模型；若 Qwen3.6 只以「經由 Gateway 轉送」的 Provider 存在，Port Monitor 無法拉起它。沒有的話用「從 Gateway 匯入」建立。
+
 ## 1. `.env`
 
 已由 `.env.example` 建立，本機專屬的值：
@@ -33,7 +35,7 @@ LINE 平台 ──HTTPS──▶ Vercel 中繼 (relay-xi-pied.vercel.app，東�
 | `BASE_URL` | `https://relay-xi-pied.vercel.app`（Vercel 中繼，見第 2.1 節） |
 | `LOCAL_AI_BASE_URL` | `http://127.0.0.1:4000`（Local AI Gateway） |
 | `LOCAL_AI_MODELS` | `local,qwen3.6`（兩條路線共用；Port Monitor 的模型 id／別名須與此相同） |
-| `PORT_MONITOR_API_KEY` | Port Monitor 桌面 →「取得連線設定」，為本 bot 建立專案金鑰並設定優先順序；留空就不經 Port Monitor |
+| `PORT_MONITOR_API_KEY` | Port Monitor 桌面 →「專案金鑰與優先順序」→「新增專案」`hospital-bot`（一般）→「取得金鑰」。**不是**上方 AI Provider 的共用連線設定。留空就不經 Port Monitor |
 | `ADMIN_API_KEY` | 已隨機產生 |
 | `GEMINI_API_KEY` | 留 `placeholder` = **不備援**：本機模型都失敗時群組會收到錯誤訊息，不會產生假資料。要備援就填真的 key。 |
 

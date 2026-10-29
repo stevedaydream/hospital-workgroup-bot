@@ -1,0 +1,10 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "regions": ["hnd1"],
+  "functions": {
+    "api/proxy.js": { "maxDuration": 60 }
+  },
+  "rewrites": [
+    { "source": "/:path*", "destination": "/api/proxy?__path=/:path*" }
+  ]
+}

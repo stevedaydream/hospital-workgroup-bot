@@ -6,7 +6,8 @@ Bot 與 Strata 跑在同一台電腦（`steve`）。OCI 因為一直顯示沒有
 LINE 平台 ──HTTPS──▶ Tailscale Funnel (steve.tailb73635.ts.net:10000)
                          │
                          ▼
-                 Bot  127.0.0.1:3000 ──▶ Local AI Gateway 127.0.0.1:4000
+                 Bot  127.0.0.1:3000 ─┬─▶ Port Monitor 127.0.0.1:43922（有專案金鑰時，會拉起模型）
+                         │             └─▶ Local AI Gateway 127.0.0.1:4000（Port Monitor 沒開時，只用執行中的模型）
                          │                    ├─ local   → Strata  :8080
                          │                    └─ qwen3.6 → Qwen3.6 :8081（Strata 顯存不足時）
                          │                    （都失敗 → Gemini，需有 key）
@@ -15,9 +16,10 @@ LINE 平台 ──HTTPS──▶ Tailscale Funnel (steve.tailb73635.ts.net:10000
 ```
 
 - Bot 只聽 `127.0.0.1`（`HOST` 可改），對外一律經 Funnel，不暴露在區網。
-- 本機模型經 `C:\AI\gateway` 呼叫，不經過 Tailscale。依 `LOCAL_AI_MODELS` 的順序嘗試，預設 `local,qwen3.6`。
-- Strata 與 Qwen3.6 共用顯示卡，不會同時執行。gateway 的兩者都是 `autostart: false`：bot 不會幫忙啟動模型，只會用「正在跑的那一個」。停機的模型 gateway 約 2 秒就回 `provider_unavailable`，所以 Strata 沒開時不會拖慢 Qwen3.6。
-- Strata 因顯存不足起不來時，執行 `C:\AI\providers\Start-Qwen36.cmd`（只用 GPU1）即可，bot 不用重啟。
+- 模型依 `LOCAL_AI_MODELS` 的順序嘗試，預設 `local,qwen3.6`。Strata 與 Qwen3.6 共用顯示卡，不會同時執行。
+- **Port Monitor 路線**（設了 `PORT_MONITOR_API_KEY`）：模型沒載入時，Port Monitor 依專案優先順序排隊，必要時關閉閒置的模型再啟動它。Strata 放不下時 Port Monitor 立即回失敗，bot 接著要 Qwen3.6，由 Port Monitor 拉起。冷啟動 Strata 約 3 分鐘，逾時預設 600 秒。
+- **Gateway 路線**：Port Monitor 沒開（連不上）、沒設金鑰，或所有模型都失敗時使用。gateway 的模型不會自動啟動，只會用已經在跑的那一個；停機的模型約 2 秒就回 `provider_unavailable`。
+- 本機模型呼叫都不經過 Tailscale。
 
 ## 1. `.env`
 
@@ -27,7 +29,8 @@ LINE 平台 ──HTTPS──▶ Tailscale Funnel (steve.tailb73635.ts.net:10000
 |---|---|
 | `BASE_URL` | `https://steve.tailb73635.ts.net:10000` |
 | `LOCAL_AI_BASE_URL` | `http://127.0.0.1:4000`（Local AI Gateway） |
-| `LOCAL_AI_MODELS` | `local,qwen3.6` |
+| `LOCAL_AI_MODELS` | `local,qwen3.6`（兩條路線共用；Port Monitor 的模型 id／別名須與此相同） |
+| `PORT_MONITOR_API_KEY` | Port Monitor 桌面 →「取得連線設定」，為本 bot 建立專案金鑰並設定優先順序；留空就不經 Port Monitor |
 | `ADMIN_API_KEY` | 已隨機產生 |
 | `GEMINI_API_KEY` | 留 `placeholder` = **不備援**：本機模型都失敗時群組會收到錯誤訊息，不會產生假資料。要備援就填真的 key。 |
 
@@ -69,7 +72,7 @@ npm start
 schtasks /Create /SC ONLOGON /TN "HospitalBot" /TR "cmd /c cd /d H:\project\hospital-workgroup-bot && npm start >> data\bot.log 2>&1"
 ```
 
-Local AI Gateway 已有登入自動啟動的排程（「Local AI Gateway」）。Strata 或 Qwen3.6 至少要開一個，否則所有辨識都會失敗或走 Gemini。
+Local AI Gateway 已有登入自動啟動的排程（「Local AI Gateway」）。有 Port Monitor 時它會自動拉起模型；沒有 Port Monitor 時，Strata 或 Qwen3.6 至少要手動開一個，否則所有辨識都會失敗或走 Gemini。
 
 ## 5. 這台電腦的限制
 

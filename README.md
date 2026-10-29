@@ -42,7 +42,7 @@ hospital-workgroup-bot/
 │   ├── db.js               # SQLite 資料層
 │   ├── auth.js             # LINE ID Token 驗證
 │   ├── ai.js               # 影像辨識入口：先走本機模型，全部失敗才 fallback 到 Gemini
-│   ├── local-ai.js         # 本機模型（經 Local AI Gateway：Strata → Qwen3.6）
+│   ├── local-ai.js         # 本機模型（Port Monitor 拉起，或經 Local AI Gateway：Strata → Qwen3.6）
 │   ├── gemini.js           # Gemini provider
 │   ├── prompts.js          # 各 provider 共用的 prompt 與結果正規化
 │   ├── line.js             # Webhook、簽章校驗、Flex Message

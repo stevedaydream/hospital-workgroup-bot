@@ -3,13 +3,16 @@ import fs from 'fs/promises';
 import path from 'path';
 import dotenv from 'dotenv';
 import { db } from './db.js';
-import { analyzeCaseImage, analyzeMultipleImages, primaryProviderLabel } from './ai.js';
+import { analyzeCaseImage, analyzeMultipleImages, primaryProviderLabel, modelLabel, isModelLoaded } from './ai.js';
+import { createJob, updateJob } from './progress.js';
 
 dotenv.config();
 
 // In-memory sessions to debounce and group consecutive image uploads
 const imageGroupSessions = new Map();
-const GROUP_WINDOW_MS = 10000; // 10-second wait window for consecutive uploads
+export const GROUP_WINDOW_MS = 10000; // 10-second wait window for consecutive uploads
+// How often the progress page's "loading vs recognizing" stage is refreshed.
+const STAGE_POLL_MS = 3000;
 
 const LINE_CHANNEL_ACCESS_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN;
 const LINE_CHANNEL_SECRET = process.env.LINE_CHANNEL_SECRET;
@@ -644,27 +647,41 @@ async function triggerBatchProcess(sourceId) {
   // Use the last uploaded image message ID as the reference
   const messageId = session.messageIds[session.messageIds.length - 1];
 
+  // Progress lives on the page linked from the first reply; the outcome goes
+  // out as ONE push, since pushes are billed per group member.
+  const { job } = session;
+  const resultMessages = [];
+  let currentModel = null;
+  const refreshStage = async () => {
+    if (!currentModel) return;
+    const loaded = await isModelLoaded(currentModel);
+    updateJob(job, { stage: loaded === false ? 'loading' : 'recognizing', model: modelLabel(currentModel) });
+  };
+  const onAttempt = model => {
+    currentModel = model;
+    refreshStage();
+  };
+  const stagePoller = setInterval(refreshStage, STAGE_POLL_MS);
+
   try {
-    await pushMessage(sourceId, {
-      type: "text",
-      text: `⚙️ 收集完畢（共 ${session.buffers.length} 張照片），正在使用${primaryProviderLabel}分析辨識中，請稍候...`
-    });
+    updateJob(job, { stage: 'recognizing', imageCount: session.buffers.length });
 
     let ocrResult;
     if (session.buffers.length === 1) {
       // Single image: Classify and process
-      ocrResult = await analyzeCaseImage(session.buffers[0]);
+      ocrResult = await analyzeCaseImage(session.buffers[0], onAttempt);
     } else {
       // Multiple images: Consolidate as ward announcements
-      ocrResult = await analyzeMultipleImages(session.buffers);
+      ocrResult = await analyzeMultipleImages(session.buffers, onAttempt);
     }
+    clearInterval(stagePoller);
 
     console.log('Batch Analysis Result:', ocrResult);
 
     // Decision 8·9: the fallback stays automatic, but the group must be told
     // that the photos left the local machine.
     if (ocrResult.fallbackReason) {
-      await pushMessage(sourceId, {
+      resultMessages.push({
         type: "text",
         text: "☁️ 本機 AI 暫時無法連線，本次照片已改上傳至 Google Gemini 雲端辨識。"
       });
@@ -682,9 +699,9 @@ async function triggerBatchProcess(sourceId) {
 
       if (addedNotes.length > 0) {
         const flexNotesCard = getAutoNotesAddedFlex(addedNotes, sourceId);
-        await pushMessage(sourceId, flexNotesCard);
+        resultMessages.push(flexNotesCard);
       } else {
-        await pushMessage(sourceId, {
+        resultMessages.push({
           type: "text",
           text: "⚠️ AI 判斷此圖片為公告，但未能解析出任何具體公告項目。"
         });
@@ -708,9 +725,9 @@ async function triggerBatchProcess(sourceId) {
 
       if (addedEvents.length > 0) {
         const flexCalendarCard = getAutoCalendarAddedFlex(addedEvents, sourceId);
-        await pushMessage(sourceId, flexCalendarCard);
+        resultMessages.push(flexCalendarCard);
       } else {
-        await pushMessage(sourceId, {
+        resultMessages.push({
           type: "text",
           text: "⚠️ AI 判斷此圖片為行事曆排程，但未能解析出任何具體活動項目。"
         });
@@ -772,17 +789,22 @@ async function triggerBatchProcess(sourceId) {
 
       // Send feedback response to group
       const flexSummaryCard = getOcrSummaryFlex(dispatchedGroups, hasUro, messageId, sourceId, dateWarning);
-      await pushMessage(sourceId, flexSummaryCard);
+      resultMessages.push(flexSummaryCard);
     } else {
       // --- 🔴 UNKNOWN/OTHER Pipeline ---
-      await pushMessage(sourceId, {
+      resultMessages.push({
         type: "text",
         text: "⚠️ AI 無法辨識此圖片為『Case分配表』或『病房公告事項』。請確認圖片內容是否清晰，或使用主選單手動編輯公告。"
       });
     }
 
+    const RESULT_LABELS = { WARD_NOTE: '病房公告', CALENDAR: '行事曆', CASE_TABLE: 'Case 分配表' };
+    updateJob(job, { stage: 'done', resultLabel: RESULT_LABELS[ocrResult.type] || '無法辨識' });
+    await pushMessage(sourceId, resultMessages);
   } catch (error) {
+    clearInterval(stagePoller);
     console.error('Error processing batch images:', error);
+    updateJob(job, { stage: 'failed', error: error.message });
     await pushMessage(sourceId, {
       type: "text",
       text: `❌ 圖片整併分析失敗，錯誤原因：${error.message}`
@@ -952,14 +974,19 @@ export async function handleWebhookEvent(event) {
           const session = {
             messageIds: [messageId],
             buffers: [imageBuffer],
-            timer: null
+            timer: null,
+            job: createJob()
           };
           imageGroupSessions.set(sourceId, session);
 
-          // Reply indicating we are waiting for more images
+          // Replies are free; this one carries the progress link so nothing
+          // else needs to be pushed until the result is ready.
           await replyMessage(event.replyToken, {
             type: "text",
-            text: "📥 已收到第 1 張照片，正在等待其餘關聯照片...\n（10 秒內上傳新照片將會自動整併為單一晨會公告項目）"
+            text: `📥 已收到第 1 張照片，10 秒內再上傳的照片會一起整併辨識。
+
+⚙️ 接著使用${primaryProviderLabel}辨識，模型需要載入時約 3～4 分鐘。
+⏱ 即時進度：${BASE_URL}/progress.html?job=${session.job.id}`
           });
 
           // Set 10s timer to trigger batch processing
@@ -976,8 +1003,10 @@ export async function handleWebhookEvent(event) {
           // Reset the timer (sliding window debounce)
           clearTimeout(session.timer);
 
-          // Update progress notice back to group chat
-          await pushMessage(sourceId, {
+          updateJob(session.job, { imageCount: session.buffers.length, stage: 'collecting' });
+
+          // Each upload has its own (free) reply token.
+          await replyMessage(event.replyToken, {
             type: "text",
             text: `📥 續傳成功！已收到第 ${session.buffers.length} 張連續照片，請繼續上傳，或等待 10 秒後開始分析...`
           });

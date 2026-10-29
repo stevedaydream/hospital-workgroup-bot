@@ -5,7 +5,8 @@ import { serveStatic } from '@hono/node-server/serve-static';
 import dotenv from 'dotenv';
 import { db } from './db.js';
 import { requireLiffAuth, requireAdminKey } from './auth.js';
-import { verifySignature, handleWebhookEvent, pushMessage } from './line.js';
+import { verifySignature, handleWebhookEvent, pushMessage, GROUP_WINDOW_MS } from './line.js';
+import { getJobView } from './progress.js';
 import { initializeScheduler, runDailyDispatch, runDailyReminders } from './scheduler.js';
 
 dotenv.config();
@@ -58,6 +59,19 @@ function getThursdaysInRange(startDateStr, endDateStr) {
   
   return thursdays;
 }
+
+// ----------------------------------------------------
+// Recognition progress (public/progress.html)
+// ----------------------------------------------------
+// Opened from a link in the LINE reply, outside LIFF, so it cannot carry an
+// ID token. The job id is 96 random bits and the view holds only stage and
+// timing -- no image content or recognition results.
+app.get('/progress-api/:id', (c) => {
+  const view = getJobView(c.req.param('id'), GROUP_WINDOW_MS);
+  if (!view) return c.json({ error: 'not_found' }, 404);
+  c.header('Cache-Control', 'no-store');
+  return c.json(view);
+});
 
 // ----------------------------------------------------
 // Pretty URL Router Redirects for LIFF Apps

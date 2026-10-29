@@ -43,6 +43,7 @@
 - **P1 已完成**：單機化、SQLite、時區與 `dispatch_date`、API 驗證、部署檔。AI 仍為 Gemini。
 - **P2 方向調整（2026-10）**：本地推論改由家中電腦的 Strata（OpenAI 相容 API，Qwen 視覺模型）承擔，OCI 經 Tailscale 連過去；Gemini 保留為自動備援並在群組明示。理由：家中電腦實測單圖約 20～30 秒，遠快於 2 核 ARM 的估計值，且不需在 OCI 上跑 llama.cpp。代價：電腦關機時整批走雲端。
 - **部署暫改本機（2026-10）**：OCI 一直顯示沒有容量可建立，bot 改跑在 Strata 那台電腦上，經 Tailscale Funnel 提供 LINE 需要的公網 HTTPS。沒有 Gemini key 時不做備援，以免 MOCK 結果被當成真資料發到群組。代價：電腦睡眠或關機即停止服務，07:30 推播也會錯過。
+- **本機模型備援（2026-10）**：bot 改連 Local AI Gateway，依序試 Strata → Qwen3.6（35B-A3B Q4_K_P，llama.cpp + mmproj，單卡）。兩者共用 GPU 不同時執行，gateway 不自動啟動，bot 只用正在跑的那個。
 - **P2 原計畫（未開始）**：llama.cpp + Gemma 4 E4B + mmproj、provider 抽象、GBNF、map-reduce、fallback、輕量驗證。
 - **P3 未開始**：`doctors` 主檔與匯入入口、檔案直解、確認卡片。
 - **P4（新增，待排）**：Rich Menu 與 LIFF 介面改版。

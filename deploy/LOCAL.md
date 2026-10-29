@@ -6,14 +6,18 @@ Bot 與 Strata 跑在同一台電腦（`steve`）。OCI 因為一直顯示沒有
 LINE 平台 ──HTTPS──▶ Tailscale Funnel (steve.tailb73635.ts.net:10000)
                          │
                          ▼
-                 Bot  127.0.0.1:3000 ──▶ Strata 127.0.0.1:8080
-                         │                    （失敗時 → Gemini，需有 key）
+                 Bot  127.0.0.1:3000 ──▶ Local AI Gateway 127.0.0.1:4000
+                         │                    ├─ local   → Strata  :8080
+                         │                    └─ qwen3.6 → Qwen3.6 :8081（Strata 顯存不足時）
+                         │                    （都失敗 → Gemini，需有 key）
                          ▼
                  data/hospital.db
 ```
 
 - Bot 只聽 `127.0.0.1`（`HOST` 可改），對外一律經 Funnel，不暴露在區網。
-- 呼叫 Strata 走本機，不經過 Tailscale，也不受 Strata 的 DNS rebinding 防護影響。
+- 本機模型經 `C:\AI\gateway` 呼叫，不經過 Tailscale。依 `LOCAL_AI_MODELS` 的順序嘗試，預設 `local,qwen3.6`。
+- Strata 與 Qwen3.6 共用顯示卡，不會同時執行。gateway 的兩者都是 `autostart: false`：bot 不會幫忙啟動模型，只會用「正在跑的那一個」。停機的模型 gateway 約 2 秒就回 `provider_unavailable`，所以 Strata 沒開時不會拖慢 Qwen3.6。
+- Strata 因顯存不足起不來時，執行 `C:\AI\providers\Start-Qwen36.cmd`（只用 GPU1）即可，bot 不用重啟。
 
 ## 1. `.env`
 
@@ -22,9 +26,10 @@ LINE 平台 ──HTTPS──▶ Tailscale Funnel (steve.tailb73635.ts.net:10000
 | 變數 | 值 |
 |---|---|
 | `BASE_URL` | `https://steve.tailb73635.ts.net:10000` |
-| `STRATA_BASE_URL` | `http://127.0.0.1:8080` |
+| `LOCAL_AI_BASE_URL` | `http://127.0.0.1:4000`（Local AI Gateway） |
+| `LOCAL_AI_MODELS` | `local,qwen3.6` |
 | `ADMIN_API_KEY` | 已隨機產生 |
-| `GEMINI_API_KEY` | 留 `placeholder` = **不備援**：Strata 失敗時群組會收到錯誤訊息，不會產生假資料。要備援就填真的 key。 |
+| `GEMINI_API_KEY` | 留 `placeholder` = **不備援**：本機模型都失敗時群組會收到錯誤訊息，不會產生假資料。要備援就填真的 key。 |
 
 還要自己填：`LINE_CHANNEL_ACCESS_TOKEN`、`LINE_CHANNEL_SECRET`、`LINE_LOGIN_CHANNEL_ID`、四個 `LIFF_*_ID`（來源見 `deploy/README.md` 第 7 節）。
 
@@ -64,7 +69,7 @@ npm start
 schtasks /Create /SC ONLOGON /TN "HospitalBot" /TR "cmd /c cd /d H:\project\hospital-workgroup-bot && npm start >> data\bot.log 2>&1"
 ```
 
-Strata 也要在開機後啟動（`C:\AI\providers\Strata\Start-Uncensored.cmd`），否則所有辨識都會失敗或走 Gemini。
+Local AI Gateway 已有登入自動啟動的排程（「Local AI Gateway」）。Strata 或 Qwen3.6 至少要開一個，否則所有辨識都會失敗或走 Gemini。
 
 ## 5. 這台電腦的限制
 
@@ -77,4 +82,4 @@ Strata 也要在開機後啟動（`C:\AI\providers\Strata\Start-Uncensored.cmd`�
 - [ ] `curl http://127.0.0.1:3000/api/config` 回傳四個 LIFF ID
 - [ ] `curl https://steve.tailb73635.ts.net:10000/api/notes` 從**手機行動網路**（不在 tailnet）回 **401**
 - [ ] LINE Console Webhook「Verify」成功
-- [ ] 群組上傳一張 case 大表，啟動訊息顯示「本機 AI（Strata）」，`data/hospital.db` 出現 `dispatch_date` 為明天的列
+- [ ] 群組上傳一張 case 大表，啟動訊息顯示「本機 AI」，log 出現 `LOCAL local RAW RESPONSE`（或 `qwen3.6`），`data/hospital.db` 出現 `dispatch_date` 為明天的列

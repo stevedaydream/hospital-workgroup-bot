@@ -13,12 +13,12 @@
     .progress-head h1 {
       font-size: 20px;
       font-weight: 700;
-      letter-spacing: 0.02em;
+      letter-spacing: 0.01em;
     }
     .progress-head p {
       margin-top: 6px;
       font-size: 13px;
-      color: var(--text-secondary);
+      color: var(--ink-2);
     }
 
     .timer {
@@ -26,14 +26,15 @@
       font-size: 56px;
       font-weight: 600;
       font-variant-numeric: tabular-nums;
-      letter-spacing: 0.04em;
+      letter-spacing: 0.02em;
       line-height: 1;
+      color: var(--ink);
     }
     .timer-caption {
       text-align: center;
       margin-top: 8px;
       font-size: 13px;
-      color: var(--text-secondary);
+      color: var(--ink-2);
       min-height: 18px;
     }
 
@@ -41,29 +42,28 @@
       margin: 20px 0 24px;
       height: 8px;
       border-radius: 999px;
-      background: rgba(255, 255, 255, 0.06);
+      background: var(--surface-hover);
       overflow: hidden;
     }
     .bar-fill {
       height: 100%;
       width: 0;
       border-radius: inherit;
-      background: linear-gradient(90deg, var(--color-teal), var(--color-blue));
-      box-shadow: 0 0 12px var(--color-teal-glow);
+      background: var(--accent);
       transition: width 1s linear;
     }
-    .bar.failed .bar-fill { background: var(--color-rose); box-shadow: 0 0 12px var(--color-rose-glow); }
+    .bar.failed .bar-fill { background: var(--rose); }
 
-    .steps { list-style: none; display: grid; gap: 10px; }
+    .steps { list-style: none; display: grid; gap: 8px; }
     .step {
       display: flex;
       align-items: center;
       gap: 12px;
       padding: 12px 14px;
       border-radius: 14px;
-      border: 1px solid var(--border-color);
-      background: rgba(255, 255, 255, 0.02);
-      color: var(--text-secondary);
+      border: 1px solid var(--line);
+      background: var(--surface);
+      color: var(--ink-3);
       font-size: 15px;
       transition: var(--transition);
     }
@@ -72,31 +72,32 @@
       width: 22px;
       height: 22px;
       border-radius: 50%;
-      border: 2px solid rgba(255, 255, 255, 0.15);
+      border: 2px solid var(--line-strong);
       display: grid;
       place-items: center;
       font-size: 12px;
       font-weight: 700;
+      color: #fff;
     }
-    .step .detail { margin-left: auto; font-size: 12px; font-variant-numeric: tabular-nums; }
+    .step .detail { margin-left: auto; font-size: 12px; font-variant-numeric: tabular-nums; color: var(--ink-2); }
     .step.active {
-      color: var(--text-primary);
-      border-color: var(--border-active);
-      background: rgba(13, 148, 136, 0.12);
+      color: var(--ink);
+      font-weight: 600;
+      border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+      background: var(--accent-tint);
     }
     .step.active .dot {
-      border-color: var(--border-active);
+      border-color: var(--accent);
       border-top-color: transparent;
       animation: spin 0.9s linear infinite;
     }
-    .step.complete { color: var(--text-primary); }
-    .step.complete .dot { border-color: var(--color-emerald); background: var(--color-emerald); color: #04130d; }
-    .step.complete .dot::after { content: '✓'; }
+    .step.complete { color: var(--ink); }
+    .step.complete .dot { border-color: var(--emerald); background: var(--emerald); }
+    .step.complete .dot::after { content: "✓"; }
     .step.skipped .dot { border-style: dashed; }
-    .step.error { color: var(--text-primary); border-color: var(--color-rose); background: rgba(244, 63, 94, 0.1); }
-    .step.error .dot { border-color: var(--color-rose); background: var(--color-rose); color: #fff; }
-    .step.error .dot::after { content: '!'; }
-    @keyframes spin { to { transform: rotate(360deg); } }
+    .step.error { color: var(--ink); border-color: color-mix(in srgb, var(--rose) 40%, transparent); background: var(--rose-tint); }
+    .step.error .dot { border-color: var(--rose); background: var(--rose); }
+    .step.error .dot::after { content: "!"; }
 
     .notice {
       margin-top: 20px;
@@ -108,11 +109,11 @@
       overflow-wrap: anywhere;
     }
     .notice.show { display: block; }
-    .notice.ok { background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.35); }
-    .notice.bad { background: rgba(244, 63, 94, 0.1); border: 1px solid rgba(244, 63, 94, 0.35); }
+    .notice.ok { background: var(--emerald-tint); border: 1px solid color-mix(in srgb, var(--emerald) 30%, transparent); }
+    .notice.bad { background: var(--rose-tint); border: 1px solid color-mix(in srgb, var(--rose) 30%, transparent); }
 
     @media (prefers-reduced-motion: reduce) {
-      .step.active .dot { animation: none; border-top-color: var(--border-active); }
+      .step.active .dot { animation: none; border-top-color: var(--accent); }
       .bar-fill { transition: none; }
     }
   </style>

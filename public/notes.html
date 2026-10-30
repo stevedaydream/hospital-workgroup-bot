@@ -6,338 +6,137 @@
   <title>病房注意事項管理目錄</title>
   <link rel="stylesheet" href="/css/style.css">
   <style>
-    /* Additional Styles for Directory, Filter Bar, and Modal */
-    .directory-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 14px;
-    }
-    
-    .btn-add {
-      background: linear-gradient(135deg, #10b981, #0d9488);
-      color: white;
-      border: none;
-      padding: 10px 16px;
-      font-size: 13px;
-      font-weight: 600;
-      border-radius: 12px;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25);
-      transition: var(--transition);
-    }
-    
-    .btn-add:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 6px 16px rgba(16, 185, 129, 0.4);
-    }
-    
-    /* Horizontal Filter Bar Styling */
     .filter-bar {
       display: flex;
-      gap: 8px;
+      gap: 6px;
       overflow-x: auto;
-      padding-bottom: 10px;
-      margin-bottom: 16px;
-      scrollbar-width: none; /* Hide scrollbar for Firefox */
+      padding-bottom: 6px;
+      margin-bottom: 14px;
+      scrollbar-width: none;
     }
-    
-    .filter-bar::-webkit-scrollbar {
-      display: none; /* Hide scrollbar for Chrome/Safari */
-    }
-    
-    .filter-btn {
-      background: rgba(255, 255, 255, 0.03);
-      border: 1px solid var(--border-color);
-      color: var(--text-secondary);
-      padding: 6px 14px;
-      border-radius: 99px;
-      font-size: 12px;
-      font-weight: 600;
-      white-space: nowrap;
-      cursor: pointer;
-      transition: var(--transition);
-    }
-    
-    .filter-btn:hover {
-      background: rgba(255, 255, 255, 0.08);
-      color: white;
-    }
-    
-    .filter-btn.active {
-      background: var(--color-teal);
-      border-color: var(--color-teal);
-      color: white;
-      box-shadow: 0 4px 12px var(--color-teal-glow);
-    }
-    
-    /* Notes List */
+    .filter-bar::-webkit-scrollbar { display: none; }
+
     .notes-list {
       display: flex;
       flex-direction: column;
-      gap: 14px;
+      gap: 8px;
       margin-bottom: 20px;
       max-height: 400px;
       overflow-y: auto;
       padding-right: 4px;
     }
 
-    .notes-list::-webkit-scrollbar {
-      width: 4px;
-    }
-    .notes-list::-webkit-scrollbar-thumb {
-      background: rgba(255, 255, 255, 0.1);
-      border-radius: 2px;
-    }
-    
     .note-card {
-      background: rgba(255, 255, 255, 0.02);
-      border: 1px solid var(--border-color);
-      border-radius: 16px;
-      padding: 16px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 14px 16px;
       position: relative;
       cursor: pointer;
       transition: var(--transition);
-      animation: cardFadeIn 0.3s ease-out;
+      animation: cardFadeIn 0.3s var(--ease-out);
     }
-    
     @keyframes cardFadeIn {
-      from { opacity: 0; transform: translateY(8px); }
+      from { opacity: 0; transform: translateY(4px); }
       to { opacity: 1; transform: translateY(0); }
     }
-    
-    .note-card:hover {
-      background: rgba(255, 255, 255, 0.04);
-      border-color: rgba(20, 184, 166, 0.2);
-      transform: translateY(-2px);
-    }
-    
+    .note-card:hover { border-color: var(--line-strong); background: var(--surface-sunken); }
+    .note-card.expanded { border-color: color-mix(in srgb, var(--accent) 35%, transparent); background: var(--surface); box-shadow: var(--shadow-card); }
+
     .note-card-header {
       display: flex;
       align-items: center;
       justify-content: space-between;
       user-select: none;
     }
-    
     .note-card-title-group {
       display: flex;
       align-items: center;
       gap: 8px;
       flex-grow: 1;
     }
-    
     .collapse-icon {
       font-size: 10px;
-      color: #14b8a6;
+      color: var(--ink-3);
       transition: transform 0.2s ease;
       display: inline-block;
     }
-    
-    .note-card.expanded .collapse-icon {
-      transform: rotate(90deg);
-    }
-    
+    .note-card.expanded .collapse-icon { transform: rotate(90deg); color: var(--accent); }
     .note-card-title {
       font-size: 15px;
       font-weight: 700;
-      color: #14b8a6;
-      padding-right: 60px; /* Space for action icons */
+      color: var(--ink);
+      padding-right: 72px;
     }
-    
+
     .note-card-body-wrapper {
       display: grid;
       grid-template-rows: 0fr;
-      transition: grid-template-rows 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      transition: grid-template-rows 0.3s var(--ease-out);
     }
-    
-    .note-card.expanded .note-card-body-wrapper {
-      grid-template-rows: 1fr;
-    }
-    
-    .note-card-body-content {
-      overflow: hidden;
-      min-height: 0;
-    }
-    
+    .note-card.expanded .note-card-body-wrapper { grid-template-rows: 1fr; }
+    .note-card-body-content { overflow: hidden; min-height: 0; }
     .note-card-content {
       font-size: 14px;
-      color: #e2e8f0;
-      line-height: 1.6;
+      color: var(--ink);
+      line-height: 1.7;
       white-space: pre-wrap;
-      margin-top: 12px;
-      margin-bottom: 12px;
+      margin: 12px 0;
     }
-    
     .note-card-meta {
       font-size: 11px;
-      color: #64748b;
+      color: var(--ink-3);
       display: flex;
       justify-content: space-between;
       align-items: center;
-      border-top: 1px solid rgba(255, 255, 255, 0.04);
+      border-top: 1px solid var(--line);
       padding-top: 8px;
+      font-variant-numeric: tabular-nums;
     }
-    
+
     .note-card-actions {
-      position: absolute;
-      top: 14px;
-      right: 14px;
-      display: flex;
-      gap: 8px;
       opacity: 0;
       pointer-events: none;
       transition: opacity 0.2s ease;
     }
-    
-    .note-card.expanded .note-card-actions {
-      opacity: 1;
-      pointer-events: auto;
-    }
-    
-    .action-btn {
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid var(--border-color);
-      color: var(--text-secondary);
-      width: 28px;
-      height: 28px;
-      border-radius: 8px;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 12px;
-      transition: var(--transition);
-    }
-    
-    .action-btn:hover {
-      color: white;
-      background: var(--color-teal);
-      border-color: var(--color-teal);
-    }
-    
-    .action-btn.delete-btn:hover {
-      background: var(--color-rose);
-      border-color: var(--color-rose);
-    }
+    .note-card.expanded .note-card-actions { opacity: 1; pointer-events: auto; }
 
-    /* Modal Styles */
-    .modal-overlay {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: rgba(5, 8, 16, 0.85);
-      backdrop-filter: blur(10px);
-      -webkit-backdrop-filter: blur(10px);
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      z-index: 1000;
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 0.3s ease;
-    }
-    
-    .modal-overlay.show {
-      opacity: 1;
-      pointer-events: auto;
-    }
-    
-    .modal-card {
-      width: 90%;
-      max-width: 460px;
-      background: #111827;
-      border: 1px solid var(--border-color);
-      border-radius: 24px;
-      padding: 24px;
-      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8);
-      transform: scale(0.9);
-      transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-    }
-    
-    .modal-overlay.show .modal-card {
-      transform: scale(1);
-    }
-    
-    .modal-title {
-      font-size: 17px;
-      font-weight: 700;
-      margin-bottom: 18px;
-      color: white;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    
-    /* Category selector buttons in modal */
     .category-selector {
       display: flex;
       flex-wrap: wrap;
       gap: 6px;
       margin-bottom: 10px;
     }
-    
     .category-chip {
-      background: rgba(255, 255, 255, 0.04);
-      border: 1px solid var(--border-color);
-      color: var(--text-secondary);
+      background: var(--surface);
+      border: 1px solid var(--line);
+      color: var(--ink-2);
       padding: 6px 12px;
-      font-size: 11px;
+      font-size: 12px;
       font-weight: 600;
       border-radius: 8px;
       cursor: pointer;
       transition: var(--transition);
     }
-    
-    .category-chip:hover {
-      background: rgba(255, 255, 255, 0.1);
-      color: white;
-    }
-    
+    .category-chip:hover { border-color: var(--line-strong); color: var(--ink); }
     .category-chip.selected {
-      background: rgba(20, 184, 166, 0.15);
-      border-color: var(--color-teal);
-      color: #14b8a6;
-      box-shadow: 0 0 8px rgba(13, 148, 136, 0.2);
+      background: var(--accent-tint);
+      border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+      color: var(--accent-ink);
     }
-    
+
     .title-input-wrapper {
       display: flex;
       gap: 8px;
       align-items: center;
       margin-bottom: 16px;
     }
-    
-    .input-field {
-      width: 100%;
-      background: rgba(10, 15, 30, 0.8);
-      border: 1px solid var(--border-color);
-      border-radius: 12px;
-      padding: 12px 16px;
-      color: white;
-      font-family: inherit;
-      font-size: 14px;
-      outline: none;
-      transition: var(--transition);
-    }
-    
-    .title-input-wrapper .input-field {
-      margin-bottom: 0;
-    }
-    
-    .input-field:focus {
-      border-color: var(--border-active);
-      box-shadow: 0 0 12px var(--color-teal-glow);
-    }
-    
+    .title-input-wrapper .input-field { margin-bottom: 0; }
+
     .btn-add-custom-cat {
-      background: rgba(255, 255, 255, 0.04);
-      border: 1px solid var(--border-color);
-      color: var(--text-secondary);
+      background: var(--surface);
+      border: 1px dashed var(--line-strong);
+      color: var(--ink-2);
       padding: 12px 14px;
       border-radius: 12px;
       cursor: pointer;
@@ -346,59 +145,18 @@
       white-space: nowrap;
       transition: var(--transition);
     }
-    
     .btn-add-custom-cat:hover {
-      background: rgba(20, 184, 166, 0.1);
-      border-color: var(--color-teal);
-      color: #14b8a6;
+      border-color: var(--accent);
+      color: var(--accent-ink);
+      background: var(--accent-tint);
     }
-    
+
     .textarea-field {
       height: 160px;
       resize: none;
       width: 100%;
       margin-bottom: 16px;
-    }
-    
-    .modal-actions {
-      display: flex;
-      gap: 12px;
-      margin-top: 20px;
-    }
-    
-    .btn-cancel {
-      flex: 1;
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid var(--border-color);
-      color: var(--text-secondary);
-      padding: 12px;
-      border-radius: 12px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: var(--transition);
-    }
-    
-    .btn-cancel:hover {
-      background: rgba(255, 255, 255, 0.1);
-      color: white;
-    }
-
-    .btn-save-confirm {
-      flex: 1.5;
-      background: linear-gradient(135deg, var(--color-teal), var(--color-blue));
-      color: white;
-      border: none;
-      padding: 12px;
-      border-radius: 12px;
-      font-weight: 600;
-      cursor: pointer;
-      box-shadow: 0 4px 12px var(--color-teal-glow);
-      transition: var(--transition);
-    }
-    
-    .btn-save-confirm:hover {
-      transform: translateY(-1px);
-      box-shadow: 0 6px 16px rgba(13, 148, 136, 0.5);
+      line-height: 1.6;
     }
   </style>
 </head>
@@ -752,7 +510,7 @@
       }
 
       if (filtered.length === 0) {
-        container.innerHTML = '<div style="text-align: center; color: #64748b; padding: 40px;">目前尚無符合此篩選類別的公告。</div>';
+        container.innerHTML = '<div style="text-align: center; color: var(--ink-3); padding: 40px;">目前尚無符合此篩選類別的公告。</div>';
         document.getElementById('meta-info').innerText = '尚無此類別內容';
         return;
       }

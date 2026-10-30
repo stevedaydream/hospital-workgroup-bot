@@ -6,6 +6,7 @@ import { db } from './db.js';
 import { analyzeCaseImage, analyzeMultipleImages, primaryProviderLabel, modelLabel, isModelLoaded } from './ai.js';
 import { createJob, updateJob, trackModelStage } from './progress.js';
 import { medbaseCommand, medbaseEnabled, MEDBASE_APP_URL } from './medbase.js';
+import { todayInTaipei, dayOfWeek } from './util/date.js';
 
 dotenv.config();
 
@@ -18,6 +19,14 @@ const LINE_CHANNEL_SECRET = process.env.LINE_CHANNEL_SECRET;
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 const LIFF_NOTES_ID = process.env.LIFF_NOTES_ID;
 const LIFF_DISPATCH_ID = process.env.LIFF_DISPATCH_ID;
+
+// 出國登記 has its own LIFF app when LIFF_TRAVEL_ID is set; otherwise it opens
+// through the calendar app, whose /liff/calendar route forwards ?page=travel.
+function travelLiffUrl() {
+  return process.env.LIFF_TRAVEL_ID
+    ? `https://liff.line.me/${process.env.LIFF_TRAVEL_ID}`
+    : `https://liff.line.me/${process.env.LIFF_CALENDAR_ID || 'placeholder_calendar_liff_id'}?page=travel`;
+}
 
 // Ensure directories exist
 const IMAGES_DIR = path.resolve('public/images');
@@ -133,6 +142,23 @@ async function downloadMessageContent(messageId) {
 // Rich Flex Messages (JSON)
 // ----------------------------------------------------
 
+/** Reply text for 出國: who is abroad now, who leaves soon, and the form link. */
+function travelSummaryText() {
+  const today = todayInTaipei();
+  const fmt = (date) => `${date.slice(5).replace('-', '/')}(${dayOfWeek(date).slice(1)})`;
+  const line = (t) => `• ${t.traveler}｜${t.destination}｜${fmt(t.depart_date)}–${fmt(t.return_date)}` +
+    (t.deputy ? `｜代理 ${t.deputy}` : '');
+  const trips = db.travels.list();
+  const abroad = trips.filter(t => t.depart_date <= today);
+  const upcoming = trips.filter(t => t.depart_date > today);
+
+  const parts = ['✈️ 出國登記'];
+  parts.push(abroad.length ? '\n目前在國外：\n' + abroad.map(line).join('\n') : '\n目前沒有人在國外。');
+  if (upcoming.length) parts.push('\n即將出國：\n' + upcoming.map(line).join('\n'));
+  parts.push('\n登記或修改：\n' + travelLiffUrl());
+  return parts.join('\n');
+}
+
 function getMainMenuFlex(sourceId) {
   const liffUrl = `https://liff.line.me/${LIFF_NOTES_ID}?groupId=${sourceId}`;
   const adminLiffUrl = `https://liff.line.me/${process.env.LIFF_ADMIN_ID || 'placeholder_admin_liff_id'}?groupId=${sourceId}`;
@@ -201,6 +227,18 @@ function getMainMenuFlex(sourceId) {
             },
             style: "primary",
             color: "#6d28d9",
+            height: "sm",
+            margin: "md"
+          },
+          {
+            type: "button",
+            action: {
+              type: "uri",
+              label: "✈️ 出國時刻登記",
+              uri: travelLiffUrl()
+            },
+            style: "primary",
+            color: "#0f766e",
             height: "sm",
             margin: "md"
           },
@@ -896,6 +934,8 @@ export async function handleWebhookEvent(event) {
           type: "text",
           text: `📝 點選此連結編輯注意事項：\n${liffUrl}`
         });
+      } else if (text === '出國' || text === '出國登記' || text === '誰出國') {
+        await replyMessage(event.replyToken, { type: 'text', text: travelSummaryText() });
       } else if (text === '行事曆' || text === '行程' || text === '活動') {
         const liffUrl = `https://liff.line.me/${process.env.LIFF_CALENDAR_ID || 'placeholder_calendar_liff_id'}?groupId=${sourceId}`;
         await replyMessage(event.replyToken, {

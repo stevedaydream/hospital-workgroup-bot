@@ -36,7 +36,8 @@ hospital-workgroup-bot/
 │   ├── notes.html          # 注意事項編輯器
 │   ├── dispatch.html       # URO 一對多醫師勾選
 │   ├── admin.html          # 群組對照與人員管理
-│   └── calendar.html       # 行事曆與晨會輪序
+│   ├── calendar.html       # 行事曆與晨會輪序
+│   └── travel.html         # 出國時刻登記（全科共用）
 ├── src/
 │   ├── util/date.js        # 台灣時區日期工具（所有日期都必須經過這裡）
 │   ├── db.js               # SQLite 資料層

@@ -107,9 +107,30 @@ sqlite.exec(`
     last_versions    TEXT NOT NULL DEFAULT '{}'
   );
 
+  /* 出國登記：全科共用一份，不分 LINE 群組 */
+  CREATE TABLE IF NOT EXISTS travel_registrations (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    traveler       TEXT NOT NULL,
+    destination    TEXT NOT NULL,
+    purpose        TEXT,
+    depart_date    TEXT NOT NULL,
+    depart_time    TEXT,
+    depart_flight  TEXT,
+    return_date    TEXT NOT NULL,
+    return_time    TEXT,
+    return_flight  TEXT,
+    deputy         TEXT,
+    note           TEXT,
+    created_by     TEXT NOT NULL,
+    created_at     TEXT NOT NULL,
+    updated_by     TEXT NOT NULL,
+    updated_at     TEXT NOT NULL
+  );
+
   CREATE INDEX IF NOT EXISTS idx_dispatch_date ON daily_dispatch_cache (dispatch_date);
   CREATE INDEX IF NOT EXISTS idx_medbase_links_his ON medbase_links (his);
   CREATE INDEX IF NOT EXISTS idx_events_group  ON group_events (source_group_id, date);
+  CREATE INDEX IF NOT EXISTS idx_travel_return ON travel_registrations (return_date);
 `);
 
 // Old rows have no operational value and only make the confirmation UI noisy.
@@ -352,6 +373,56 @@ export const db = {
         )
         .run(groupId);
       return { success: true };
+    }
+  },
+
+  // --- Overseas travel registrations ---
+  travels: {
+    /** Trips not yet over (return_date >= today); `includePast` returns everything. */
+    list({ includePast = false } = {}) {
+      return includePast
+        ? sqlite.prepare('SELECT * FROM travel_registrations ORDER BY depart_date DESC, id DESC').all()
+        : sqlite
+            .prepare('SELECT * FROM travel_registrations WHERE return_date >= ? ORDER BY depart_date ASC, id ASC')
+            .all(todayInTaipei());
+    },
+
+    get(id) {
+      return sqlite.prepare('SELECT * FROM travel_registrations WHERE id = ?').get(id) || null;
+    },
+
+    create(trip, by) {
+      const now = nowIso();
+      const info = sqlite
+        .prepare(
+          `INSERT INTO travel_registrations
+             (traveler, destination, purpose, depart_date, depart_time, depart_flight,
+              return_date, return_time, return_flight, deputy, note,
+              created_by, created_at, updated_by, updated_at)
+           VALUES (@traveler, @destination, @purpose, @depart_date, @depart_time, @depart_flight,
+                   @return_date, @return_time, @return_flight, @deputy, @note,
+                   @by, @now, @by, @now)`
+        )
+        .run({ ...trip, by, now });
+      return this.get(info.lastInsertRowid);
+    },
+
+    update(id, trip, by) {
+      const changes = sqlite
+        .prepare(
+          `UPDATE travel_registrations SET
+             traveler = @traveler, destination = @destination, purpose = @purpose,
+             depart_date = @depart_date, depart_time = @depart_time, depart_flight = @depart_flight,
+             return_date = @return_date, return_time = @return_time, return_flight = @return_flight,
+             deputy = @deputy, note = @note, updated_by = @by, updated_at = @now
+           WHERE id = @id`
+        )
+        .run({ ...trip, id, by, now: nowIso() }).changes;
+      return changes > 0 ? this.get(id) : null;
+    },
+
+    remove(id) {
+      return sqlite.prepare('DELETE FROM travel_registrations WHERE id = ?').run(id).changes > 0;
     }
   },
 

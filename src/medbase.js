@@ -103,15 +103,24 @@ export async function medbaseCommand(text, source) {
   if (/^(我的班|我的班表|我的值班)$/.test(text)) {
     const me = userId && db.medbase_links.get(userId);
     if (!me) return { type: 'text', text: linkHelp() };
+    let message;
     try {
       const from = todayInTaipei();
       const r = await callMedbase('person', { his: me.his, from, to: addDays(from, MY_SCHEDULE_DAYS - 1) });
       if (!r.found) return { type: 'text', text: '在 MedBase 排班名單中找不到你，請確認帳號仍為啟用狀態。' };
       const lines = r.days.map(d => `${shortDate(d.date)}  ${d.published ? (d.shift || '—') : '未發布'}`);
-      return { type: 'text', text: `🗓 ${r.name} 接下來 ${MY_SCHEDULE_DAYS} 天\n${lines.join('\n')}\n\n完整班表：${MEDBASE_APP_URL}` };
+      message = { type: 'text', text: `🗓 ${r.name} 接下來 ${MY_SCHEDULE_DAYS} 天\n${lines.join('\n')}\n\n完整班表：${MEDBASE_APP_URL}` };
     } catch (error) {
       return { type: 'text', text: `❌ 查詢班表失敗：${error.message}` };
     }
+    if (source.type === 'user') return message;
+
+    // Asked in a group: a person's shifts are their own business, so they go
+    // to the 1:1 chat (one billed push) and the group only sees a short note.
+    // Imported lazily: line.js imports this module.
+    const { pushMessage } = await import('./line.js');
+    await pushMessage(userId, message);
+    return { type: 'text', text: '🔒 你的班表已私訊給你。\n若沒有收到，請先將「醫院群組助手」加為好友。' };
   }
 
   const day = DAY_COMMANDS.find(c => c.re.test(text));

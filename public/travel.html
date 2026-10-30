@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>出國時刻登記</title>
+  <title>出國與長假登記</title>
   <link rel="stylesheet" href="/css/style.css">
   <style>
     .trip-list {
@@ -95,6 +95,45 @@
       gap: 6px;
     }
 
+    .kind-badge {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: var(--teal-tint);
+      color: var(--teal-ink);
+    }
+    .kind-badge.leave { background: var(--amber-tint); color: var(--amber); }
+
+    /* 出國／長假 segmented switch at the top of the form */
+    .kind-switch {
+      display: flex;
+      gap: 4px;
+      padding: 4px;
+      margin-bottom: 14px;
+      border-radius: 12px;
+      background: var(--surface-sunken);
+      border: 1px solid var(--line);
+    }
+    .kind-switch button {
+      flex: 1;
+      border: none;
+      background: transparent;
+      border-radius: 9px;
+      padding: 8px;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--ink-2);
+      cursor: pointer;
+    }
+    .kind-switch button.active {
+      background: var(--surface);
+      color: var(--teal-ink);
+      box-shadow: 0 1px 2px rgba(23, 33, 43, 0.08), 0 0 0 1px var(--line);
+    }
+    .optional { font-weight: 400; color: var(--ink-3); }
+    .is-leave .abroad-only { display: none; }
+
     .empty-state { text-align: center; color: var(--ink-3); padding: 32px 12px; font-size: 13px; }
     .form-hint { font-size: 11px; color: var(--ink-3); margin-top: 4px; }
     .modal-card { max-width: 460px; }
@@ -109,20 +148,20 @@
 
     <div class="header">
       <div class="header-icon">✈️</div>
-      <h1>出國時刻登記</h1>
-      <p>登記出國日期、航班與代理人，方便科內安排</p>
+      <h1>出國與長假登記</h1>
+      <p>登記出國或長假的日期與代理人，方便科內安排</p>
       <div class="meta-info" id="meta-info">連線中...</div>
     </div>
 
     <div class="directory-header">
       <button class="filter-btn" id="btn-past" onclick="togglePast()">顯示已返國</button>
       <button class="btn-add" onclick="openModal()">
-        <span>＋</span> 登記出國
+        <span>＋</span> 新增登記
       </button>
     </div>
 
     <div class="trip-list" id="trip-list">
-      <div class="empty-state">正在載入出國登記...</div>
+      <div class="empty-state">正在載入登記資料...</div>
     </div>
 
     <button class="btn-secondary" style="width: 100%; padding: 12px;" onclick="closeLiff()">
@@ -132,7 +171,12 @@
 
   <div class="modal-overlay" id="trip-modal">
     <div class="modal-card">
-      <div class="modal-title" id="modal-title">✈️ 登記出國</div>
+      <div class="modal-title" id="modal-title">✈️ 新增登記</div>
+
+      <div class="kind-switch" role="radiogroup" aria-label="類型">
+        <button type="button" data-kind="出國" role="radio" onclick="setKind('出國')">✈️ 出國</button>
+        <button type="button" data-kind="長假" role="radio" onclick="setKind('長假')">🏖 長假</button>
+      </div>
 
       <div class="form-row">
         <div class="form-group" style="flex: 1;">
@@ -140,7 +184,7 @@
           <input type="text" class="input-field" id="input-traveler" maxlength="30">
         </div>
         <div class="form-group" style="flex: 1;">
-          <label class="form-label" style="font-size: 12px;">事由</label>
+          <label class="form-label" style="font-size: 12px;">事由 <span class="optional">（選填）</span></label>
           <select class="input-field" id="input-purpose">
             <option value="">（未填）</option>
             <option value="開會研習">開會研習</option>
@@ -151,36 +195,36 @@
       </div>
 
       <div class="form-group">
-        <label class="form-label" style="font-size: 12px;">目的地</label>
+        <label class="form-label" style="font-size: 12px;">目的地 <span class="optional">（選填）</span></label>
         <input type="text" class="input-field" id="input-destination" maxlength="50" placeholder="例如：日本東京">
       </div>
 
       <div class="form-group">
-        <label class="form-label" style="font-size: 12px;">去程（出發日期・起飛時間・航班）</label>
+        <label class="form-label" style="font-size: 12px;" id="label-depart">去程（出發日期・起飛時間・航班）</label>
         <div style="display: flex; gap: 8px;">
           <input type="date" class="input-field" id="input-depart-date" style="flex: 1.4;">
-          <input type="time" class="input-field" id="input-depart-time" style="flex: 1;">
+          <input type="time" class="input-field abroad-only" id="input-depart-time" style="flex: 1;" aria-label="起飛時間（選填）">
         </div>
-        <input type="text" class="input-field" id="input-depart-flight" maxlength="30" placeholder="航班（選填），例如 BR198" style="margin-top: 8px;">
+        <input type="text" class="input-field abroad-only" id="input-depart-flight" maxlength="30" placeholder="航班（選填），例如 BR198" style="margin-top: 8px;">
       </div>
 
       <div class="form-group">
-        <label class="form-label" style="font-size: 12px;">回程（返國日期・抵台時間・航班）</label>
+        <label class="form-label" style="font-size: 12px;" id="label-return">回程（返國日期・抵台時間・航班）</label>
         <div style="display: flex; gap: 8px;">
           <input type="date" class="input-field" id="input-return-date" style="flex: 1.4;">
-          <input type="time" class="input-field" id="input-return-time" style="flex: 1;">
+          <input type="time" class="input-field abroad-only" id="input-return-time" style="flex: 1;" aria-label="抵台時間（選填）">
         </div>
-        <input type="text" class="input-field" id="input-return-flight" maxlength="30" placeholder="航班（選填），例如 BR197" style="margin-top: 8px;">
-        <div class="form-hint">時間與航班可之後再補。</div>
+        <input type="text" class="input-field abroad-only" id="input-return-flight" maxlength="30" placeholder="航班（選填），例如 BR197" style="margin-top: 8px;">
+        <div class="form-hint">必填只有姓名與起訖日期，其他可之後再補。</div>
       </div>
 
       <div class="form-group">
-        <label class="form-label" style="font-size: 12px;">代理人（選填）</label>
+        <label class="form-label" style="font-size: 12px;">代理人 <span class="optional">（選填）</span></label>
         <input type="text" class="input-field" id="input-deputy" maxlength="30" placeholder="例如：王醫師">
       </div>
 
       <div class="form-group">
-        <label class="form-label" style="font-size: 12px;">備註（選填）</label>
+        <label class="form-label" style="font-size: 12px;">備註 <span class="optional">（選填）</span></label>
         <input type="text" class="input-field" id="input-note" maxlength="300" placeholder="例如：門診已停診、可 LINE 聯絡">
       </div>
 
@@ -203,6 +247,7 @@
     let trips = [];
     let showPast = false;
     let editingId = null;
+    let formKind = '出國';
 
     // Taiwan date, so "目前在國外" flips at local midnight rather than 08:00.
     const todayStr = () => new Intl.DateTimeFormat('en-CA', {
@@ -250,7 +295,7 @@
         renderTrips();
       } catch (error) {
         document.getElementById('trip-list').innerHTML =
-          '<div class="empty-state" style="color: var(--rose);">無法取得出國登記資料</div>';
+          '<div class="empty-state" style="color: var(--rose);">無法取得登記資料</div>';
         document.getElementById('meta-info').innerText = '連線異常';
       }
     }
@@ -282,13 +327,13 @@
       const past = trips.filter(t => t.return_date < today);
 
       const sections = [
-        ['🌏 目前在國外', abroad, 'abroad'],
-        ['🗓 即將出國', upcoming, ''],
+        ['🌏 目前出國／長假中', abroad, 'abroad'],
+        ['🗓 即將出國／長假', upcoming, ''],
         ...(showPast ? [['已返國', past, 'past']] : [])
       ].filter(([, list]) => list.length);
 
       if (!sections.length) {
-        container.innerHTML = '<div class="empty-state">目前沒有出國登記。<br>點右上「登記出國」新增。</div>';
+        container.innerHTML = '<div class="empty-state">目前沒有出國或長假登記。<br>點右上「新增登記」新增。</div>';
       } else {
         container.innerHTML = sections.map(([title, list, kind]) => `
           <div>
@@ -298,8 +343,8 @@
       }
 
       document.getElementById('meta-info').innerText = abroad.length
-        ? `目前 ${abroad.length} 人在國外・${upcoming.length} 筆即將出國`
-        : `${upcoming.length} 筆即將出國`;
+        ? `目前 ${abroad.length} 人出國或休長假・${upcoming.length} 筆即將開始`
+        : `${upcoming.length} 筆即將開始`;
     }
 
     function leg(label, date, time, flight) {
@@ -309,6 +354,7 @@
     }
 
     function tripCard(t, kind) {
+      const isLeave = t.kind === '長假';
       const meta = [`<span>共 ${tripDays(t)} 天</span>`];
       if (t.deputy) meta.push(`<span>🤝 代理：${escapeHtml(t.deputy)}</span>`);
       meta.push(`<span>👤 ${escapeHtml(t.updated_by)} 登記</span>`);
@@ -316,12 +362,13 @@
         <div class="trip-card ${kind}">
           <div class="trip-head">
             <span class="trip-name">${escapeHtml(t.traveler)}</span>
-            <span class="trip-dest">📍 ${escapeHtml(t.destination)}</span>
+            <span class="kind-badge ${isLeave ? 'leave' : ''}">${isLeave ? '🏖 長假' : '✈️ 出國'}</span>
+            ${t.destination ? `<span class="trip-dest">📍 ${escapeHtml(t.destination)}</span>` : ''}
             ${t.purpose ? `<span class="purpose-badge">${escapeHtml(t.purpose)}</span>` : ''}
           </div>
           <div class="leg">
-            ${leg('去程', t.depart_date, t.depart_time, t.depart_flight)}
-            ${leg('回程', t.return_date, t.return_time, t.return_flight)}
+            ${leg(isLeave ? '開始' : '去程', t.depart_date, t.depart_time, t.depart_flight)}
+            ${leg(isLeave ? '結束' : '回程', t.return_date, t.return_time, t.return_flight)}
           </div>
           <div class="trip-meta">${meta.join('')}</div>
           ${t.note ? `<div class="trip-note">${escapeHtml(t.note)}</div>` : ''}
@@ -345,9 +392,24 @@
       deputy: 'deputy', note: 'note'
     };
 
+    // 長假 has no flights: those inputs are hidden and the date labels change.
+    function setKind(kind) {
+      formKind = kind;
+      const leave = kind === '長假';
+      document.querySelector('#trip-modal .modal-card').classList.toggle('is-leave', leave);
+      document.querySelectorAll('.kind-switch button').forEach(b => {
+        const on = b.dataset.kind === kind;
+        b.classList.toggle('active', on);
+        b.setAttribute('aria-checked', on);
+      });
+      document.getElementById('label-depart').innerText = leave ? '開始日期' : '去程（出發日期・起飛時間・航班）';
+      document.getElementById('label-return').innerText = leave ? '結束日期' : '回程（返國日期・抵台時間・航班）';
+    }
+
     function openModal(id = null) {
       editingId = id;
       const trip = id ? trips.find(t => t.id === id) : null;
+      setKind(trip?.kind || '出國');
       for (const [key, elId] of Object.entries(FIELDS)) {
         document.getElementById(elId).value = trip ? (trip[COLUMNS[key]] || '') : '';
       }
@@ -355,7 +417,7 @@
         document.getElementById('input-traveler').value = userName;
         document.getElementById('input-depart-date').value = todayStr();
       }
-      document.getElementById('modal-title').innerText = trip ? '✏️ 修改出國登記' : '✈️ 登記出國';
+      document.getElementById('modal-title').innerText = trip ? '✏️ 修改登記' : '＋ 新增登記';
       document.getElementById('trip-modal').classList.add('show');
     }
 
@@ -373,9 +435,14 @@
     async function saveTrip() {
       const body = {};
       for (const [key, elId] of Object.entries(FIELDS)) body[key] = document.getElementById(elId).value.trim();
+      body.kind = formKind;
+      if (formKind === '長假') {
+        // Hidden flight fields must not keep values typed while 出國 was selected.
+        for (const key of ['departTime', 'departFlight', 'returnTime', 'returnFlight']) body[key] = '';
+      }
 
-      if (!body.traveler || !body.destination || !body.departDate || !body.returnDate) {
-        showToast('請填寫姓名、目的地、出發與返國日期', true);
+      if (!body.traveler || !body.departDate || !body.returnDate) {
+        showToast('請填寫姓名與起訖日期', true);
         return;
       }
       if (body.returnDate < body.departDate) {
@@ -397,7 +464,7 @@
           showToast(result.error || '伺服器處理錯誤', true);
           return;
         }
-        showToast(editingId ? '已更新出國登記' : '已登記出國');
+        showToast(editingId ? '已更新登記' : '已新增登記');
         closeModal();
         await fetchTrips();
       } catch (error) {
@@ -410,7 +477,7 @@
 
     async function deleteTrip(id) {
       const trip = trips.find(t => t.id === id);
-      if (!confirm(`確定刪除「${trip ? trip.traveler + '・' + trip.destination : ''}」的出國登記？`)) return;
+      if (!confirm(`確定刪除「${trip ? [trip.traveler, trip.kind, trip.destination].filter(Boolean).join('・') : ''}」的登記？`)) return;
       try {
         const response = await fetch(`/api/travels/${id}`, { method: 'DELETE' });
         if (!response.ok) throw new Error(response.status);

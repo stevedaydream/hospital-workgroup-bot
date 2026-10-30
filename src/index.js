@@ -12,6 +12,7 @@ import { analyzeRoster, isModelLoaded, modelLabel } from './ai.js';
 import { initializeScheduler, runDailyDispatch, runDailyReminders } from './scheduler.js';
 import { medbaseEnabled, verifyNotifySignature, deliverNotice, DEFAULT_MEDBASE_GROUP } from './medbase.js';
 import { getGroupMemberCount, getPushQuota } from './line.js';
+import { FEATURES, isFeatureKey, effectiveFeatures } from './features.js';
 
 dotenv.config();
 
@@ -390,6 +391,45 @@ app.get('/api/line-groups', (c) => c.json(db.line_groups.getAll()));
 
 app.delete('/api/line-groups/:lineGroupId', (c) => {
   return c.json({ removed: db.line_groups.remove(c.req.param('lineGroupId')) });
+});
+
+// Feature switches per LINE group (admin page). '*' holds the defaults for
+// groups that have no settings of their own.
+app.get('/api/group-features', (c) => {
+  const saved = db.group_features.getAll();
+  const lastChange = (id) => saved
+    .filter(r => r.line_group_id === id)
+    .reduce((latest, r) => (!latest || r.updated_at > latest.updated_at ? r : latest), null);
+  const view = (id) => {
+    const last = lastChange(id);
+    return {
+      features: effectiveFeatures(id),
+      customized: Boolean(last),
+      updated_at: last?.updated_at || null,
+      updated_by: last?.updated_by || null
+    };
+  };
+  return c.json({
+    features: FEATURES,
+    defaults: view('*'),
+    groups: db.line_groups.getAll().map(g => ({ ...g, ...view(g.line_group_id) }))
+  });
+});
+
+app.put('/api/group-features/:lineGroupId', async (c) => {
+  const lineGroupId = c.req.param('lineGroupId');
+  if (lineGroupId !== '*' && !/^[CR][0-9a-f]{32}$/.test(lineGroupId)) return c.json({ error: 'LINE 群組 ID 格式錯誤' }, 400);
+  const body = await c.req.json().catch(() => ({}));
+  const features = body.features && typeof body.features === 'object' ? body.features : {};
+  const entries = Object.entries(features).filter(([key]) => isFeatureKey(key));
+  if (entries.length === 0) return c.json({ error: '沒有可儲存的功能開關' }, 400);
+  db.group_features.save(lineGroupId, Object.fromEntries(entries.map(([k, v]) => [k, Boolean(v)])), c.get('displayName') || '未知人員');
+  return c.json({ features: effectiveFeatures(lineGroupId) });
+});
+
+// Back to following the defaults.
+app.delete('/api/group-features/:lineGroupId', (c) => {
+  return c.json({ removed: db.group_features.reset(c.req.param('lineGroupId')) });
 });
 
 // MedBase settings per LINE group (admin page). Member counts come from LINE

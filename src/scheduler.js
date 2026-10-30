@@ -4,6 +4,7 @@ import { db } from './db.js';
 import { pushMessage } from './line.js';
 import { todayInTaipei, daysBetween, dayOfWeek } from './util/date.js';
 import { medbaseEnabled, sendDueReminders, checkPublished } from './medbase.js';
+import { featureEnabled } from './features.js';
 
 dotenv.config();
 
@@ -28,6 +29,10 @@ export async function runDailyDispatch() {
     // Deduplicate by target group ID to avoid double-posting
     const uniqueDispatches = {};
     for (const d of confirmedDispatches) {
+      if (!featureEnabled(d.target_line_group_id, 'dispatch')) {
+        console.log(`[Scheduler] Dispatch to ${d.target_line_group_id} skipped: switched off for this group.`);
+        continue;
+      }
       uniqueDispatches[d.target_line_group_id] = d;
     }
 
@@ -75,7 +80,7 @@ export async function runDailyReminders() {
       if (diffDays === 28 || diffDays === 7 || diffDays === 1) {
         // Find if this event mentions any doctor in mappings
         for (const map of allMappings) {
-          if (map.type === 'DIRECT' && evt.title.includes(map.match_key)) {
+          if (map.type === 'DIRECT' && evt.title.includes(map.match_key) && featureEnabled(map.line_group_id, 'report_reminder')) {
             const docName = map.match_key;
             const targetGroupId = map.line_group_id; // Send directly to their group (Group B)
             

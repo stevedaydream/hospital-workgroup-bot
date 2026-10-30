@@ -115,6 +115,16 @@ sqlite.exec(`
     left_at        TEXT
   );
 
+  /* 各 LINE 群組的功能開關；line_group_id = '*' 是尚未個別設定之群組的預設值 */
+  CREATE TABLE IF NOT EXISTS group_features (
+    line_group_id  TEXT NOT NULL,
+    feature        TEXT NOT NULL,
+    enabled        INTEGER NOT NULL,
+    updated_by     TEXT NOT NULL DEFAULT '',
+    updated_at     TEXT NOT NULL,
+    PRIMARY KEY (line_group_id, feature)
+  );
+
   /* 出國登記：全科共用一份，不分 LINE 群組 */
   CREATE TABLE IF NOT EXISTS travel_registrations (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -462,7 +472,53 @@ export const db = {
     },
 
     remove(lineGroupId) {
+      sqlite.prepare('DELETE FROM group_features WHERE line_group_id = ?').run(lineGroupId);
       return sqlite.prepare('DELETE FROM line_groups WHERE line_group_id = ?').run(lineGroupId).changes > 0;
+    }
+  },
+
+  // Per-group feature switches. A feature with no row for the group falls back
+  // to the '*' row; with neither, features.js applies the feature's own default.
+  group_features: {
+    getAll() {
+      return sqlite.prepare('SELECT * FROM group_features').all();
+    },
+
+    /** { feature: boolean } saved for one group (or '*'); unsaved features are absent. */
+    get(lineGroupId) {
+      const rows = sqlite.prepare('SELECT feature, enabled FROM group_features WHERE line_group_id = ?').all(lineGroupId);
+      return Object.fromEntries(rows.map(r => [r.feature, r.enabled === 1]));
+    },
+
+    /** The saved switch for a group, else the '*' one; null when neither is saved. */
+    lookup(lineGroupId, feature) {
+      const row = sqlite
+        .prepare(`SELECT enabled FROM group_features WHERE feature = ? AND line_group_id IN (?, '*')
+                  ORDER BY line_group_id = '*' LIMIT 1`)
+        .get(feature, lineGroupId);
+      return row ? row.enabled === 1 : null;
+    },
+
+    /** Saves every given switch for a group in one transaction. */
+    save(lineGroupId, features, updatedBy) {
+      const upsert = sqlite.prepare(
+        `INSERT INTO group_features (line_group_id, feature, enabled, updated_by, updated_at)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT (line_group_id, feature) DO UPDATE SET
+           enabled = excluded.enabled, updated_by = excluded.updated_by, updated_at = excluded.updated_at`
+      );
+      const now = nowIso();
+      sqlite.transaction(() => {
+        for (const [feature, enabled] of Object.entries(features)) {
+          upsert.run(lineGroupId, feature, enabled ? 1 : 0, updatedBy, now);
+        }
+      })();
+      return this.get(lineGroupId);
+    },
+
+    /** Drops a group's own switches so it follows the '*' defaults again. */
+    reset(lineGroupId) {
+      return sqlite.prepare('DELETE FROM group_features WHERE line_group_id = ?').run(lineGroupId).changes;
     }
   },
 

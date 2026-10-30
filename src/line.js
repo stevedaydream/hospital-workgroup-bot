@@ -7,6 +7,7 @@ import { analyzeCaseImage, analyzeMultipleImages, primaryProviderLabel, modelLab
 import { createJob, updateJob, trackModelStage } from './progress.js';
 import { medbaseCommand, medbaseEnabled, MEDBASE_APP_URL } from './medbase.js';
 import { todayInTaipei, dayOfWeek } from './util/date.js';
+import { featureEnabled } from './features.js';
 
 dotenv.config();
 
@@ -166,25 +167,37 @@ function travelSummaryText() {
   return parts.join('\n');
 }
 
-/** A short text with quick-reply buttons for the everyday commands. */
-function quickMenuText(text) {
+/** A short text with quick-reply buttons for the everyday commands this group has on. */
+function quickMenuText(text, sourceId) {
+  const on = (feature) => featureEnabled(sourceId, feature);
   const item = (label, message) => ({ type: "action", action: { type: "message", label, text: message } });
-  return {
-    type: "text",
-    text,
-    quickReply: {
-      items: [
-        item("📋 近期值班", "近期值班"),
-        item("🗓 我的班", "我的班"),
-        item("📅 今日行程", "今日行程"),
-        item("✈️ 出國/長假", "出國"),
-        item("📖 主選單", "主選單")
-      ]
-    }
-  };
+  const items = [
+    medbaseEnabled && on('duty') && item("📋 近期值班", "近期值班"),
+    medbaseEnabled && on('my_schedule') && item("🗓 我的班", "我的班"),
+    on('calendar') && item("📅 今日行程", "今日行程"),
+    on('travel') && item("✈️ 出國/長假", "出國"),
+    on('menu') && item("📖 主選單", "主選單")
+  ].filter(Boolean);
+  return items.length ? { type: "text", text, quickReply: { items } } : { type: "text", text };
+}
+
+// Which feature switch a text command belongs to; null for commands that are
+// always available (e.g. 「ID」, needed to set a group up in the first place).
+const COMMAND_FEATURES = [
+  [/^(選單|menu|助手|說明)$|選單$/, 'menu'],
+  [/^(\/notes|編輯筆記)$/, 'notes'],
+  [/^(出國|出國登記|誰出國|長假|誰請長假)$/, 'travel'],
+  [/^(行事曆|行程|活動|(今日|今天|明日|明天)(行程|活動))$/, 'calendar'],
+  [/^(取消轉發|取消發送)$/, 'dispatch'],
+  [/^(清空轉發|取消今日轉發)$/, 'image_ai']
+];
+
+function commandFeature(text) {
+  return COMMAND_FEATURES.find(([re]) => re.test(text))?.[1] ?? null;
 }
 
 function getMainMenuFlex(sourceId) {
+  const on = (feature) => featureEnabled(sourceId, feature);
   const liffUrl = `https://liff.line.me/${LIFF_NOTES_ID}?groupId=${sourceId}`;
   const adminLiffUrl = `https://liff.line.me/${process.env.LIFF_ADMIN_ID || 'placeholder_admin_liff_id'}?groupId=${sourceId}`;
   const calendarLiffUrl = `https://liff.line.me/${process.env.LIFF_CALENDAR_ID || 'placeholder_calendar_liff_id'}?groupId=${sourceId}`;
@@ -232,7 +245,7 @@ function getMainMenuFlex(sourceId) {
             weight: "bold",
             size: "md"
           },
-          {
+          on('notes') && {
             type: "button",
             action: {
               type: "uri",
@@ -241,9 +254,10 @@ function getMainMenuFlex(sourceId) {
             },
             style: "primary",
             color: "#0369a1",
-            height: "sm"
+            height: "sm",
+            margin: "md"
           },
-          {
+          on('calendar') && {
             type: "button",
             action: {
               type: "uri",
@@ -255,7 +269,7 @@ function getMainMenuFlex(sourceId) {
             height: "sm",
             margin: "md"
           },
-          {
+          on('travel') && {
             type: "button",
             action: {
               type: "uri",
@@ -267,7 +281,7 @@ function getMainMenuFlex(sourceId) {
             height: "sm",
             margin: "md"
           },
-          {
+          on('image_ai') && {
             type: "button",
             action: {
               type: "uri",
@@ -292,16 +306,16 @@ function getMainMenuFlex(sourceId) {
             margin: "md"
           },
           // MedBase 排班：查詢用 message action，觸發的是免費的回覆
-          ...(medbaseEnabled ? [
+          ...(medbaseEnabled && (on('duty') || on('my_schedule')) ? [
             {
               type: "box",
               layout: "horizontal",
               spacing: "sm",
               margin: "md",
               contents: [
-                { type: "button", action: { type: "message", label: "🗓 我的班", text: "我的班" }, style: "secondary", height: "sm" },
-                { type: "button", action: { type: "message", label: "📋 近期值班", text: "近期值班" }, style: "secondary", height: "sm" }
-              ]
+                on('my_schedule') && { type: "button", action: { type: "message", label: "🗓 我的班", text: "我的班" }, style: "secondary", height: "sm" },
+                on('duty') && { type: "button", action: { type: "message", label: "📋 近期值班", text: "近期值班" }, style: "secondary", height: "sm" }
+              ].filter(Boolean)
             },
             {
               type: "button",
@@ -312,7 +326,7 @@ function getMainMenuFlex(sourceId) {
               margin: "sm"
             }
           ] : []),
-          {
+          ...(on('image_ai') ? [{
             type: "separator",
             color: "#e1e6e9",
             margin: "md"
@@ -349,8 +363,8 @@ function getMainMenuFlex(sourceId) {
                 size: "xs"
               }
             ]
-          }
-        ]
+          }] : [])
+        ].filter(Boolean)
       },
       footer: {
         type: "box",
@@ -929,7 +943,7 @@ export async function handleWebhookEvent(event) {
     console.log(`[Webhook Join] Joined group/room/user ID: ${sourceId}`);
     db.line_groups.recordJoin(sourceId, await getGroupName(sourceId));
 
-    await replyMessage(event.replyToken, quickMenuText(`本群組的 LINE ID：\n${sourceId}\n\n輸入「主選單」可開啟完整選單。`));
+    await replyMessage(event.replyToken, quickMenuText(`本群組的 LINE ID：\n${sourceId}\n\n輸入「主選單」可開啟完整選單。`, sourceId));
     return;
   }
 
@@ -947,14 +961,18 @@ export async function handleWebhookEvent(event) {
       const text = message.text.trim();
       const sourceId = event.source.groupId || event.source.roomId || event.source.userId;
 
-      const medbaseReply = await medbaseCommand(text, event.source);
+      // Commands of a feature switched off for this group are ignored silently.
+      const feature = commandFeature(text);
+      if (feature && !featureEnabled(sourceId, feature)) return;
+
+      const medbaseReply = await medbaseCommand(text, event.source, (f) => featureEnabled(sourceId, f));
       if (medbaseReply) {
-        await replyMessage(event.replyToken, medbaseReply);
+        if (!medbaseReply.silent) await replyMessage(event.replyToken, medbaseReply);
         return;
       }
 
       if (text === '選單') {
-        await replyMessage(event.replyToken, quickMenuText('要做什麼？點下方按鈕，或輸入「主選單」看全部功能。'));
+        await replyMessage(event.replyToken, quickMenuText('要做什麼？點下方按鈕，或輸入「主選單」看全部功能。', sourceId));
       } else if (text === 'menu' || text.endsWith('選單') || text === '助手' || text === '說明') {
         await replyMessage(event.replyToken, getMainMenuFlex(sourceId));
       } else if (text === '/notes' || text === '編輯筆記') {
@@ -1070,6 +1088,7 @@ export async function handleWebhookEvent(event) {
     if (message.type === 'image') {
       const sourceId = event.source.groupId || event.source.roomId || event.source.userId;
       const messageId = message.id;
+      if (!featureEnabled(sourceId, 'image_ai')) return;
 
       try {
         // 1. Download image

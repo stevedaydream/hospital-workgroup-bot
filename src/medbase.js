@@ -116,16 +116,15 @@ export async function medbaseCommand(text, source) {
 
   const day = DAY_COMMANDS.find(c => c.re.test(text));
   if (day) {
-    // In a group: the MedBase group configured for it. In a DM: the asker's own group.
+    // The MedBase group configured for this chat, else the asker's own (linked) group.
     const chatId = source.groupId || source.roomId;
-    const group = chatId
-      ? db.medbase_groups.get(chatId)?.medbase_group
-      : userId && db.medbase_links.get(userId)?.medbase_group;
+    const group = (chatId && db.medbase_groups.get(chatId)?.medbase_group)
+      || (userId && db.medbase_links.get(userId)?.medbase_group);
     if (!group) {
       return {
         type: 'text',
         text: chatId
-          ? '⚙️ 這個群組還沒對應 MedBase 排班群組，請管理者到管理頁「MedBase 串接」設定。'
+          ? `⚙️ 這個群組還沒對應 MedBase 排班群組。\n管理者可到管理頁「MedBase 串接」設定；或先綁定自己的 MedBase 帳號，就能直接查詢。\n${MEDBASE_API_URL}/settings`
           : linkHelp()
       };
     }

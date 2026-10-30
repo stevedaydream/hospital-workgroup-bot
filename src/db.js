@@ -107,6 +107,14 @@ sqlite.exec(`
     last_versions    TEXT NOT NULL DEFAULT '{}'
   );
 
+  /* Bot 被邀入過的 LINE 群組；退出時保留紀錄、標記 left_at */
+  CREATE TABLE IF NOT EXISTS line_groups (
+    line_group_id  TEXT PRIMARY KEY,
+    group_name     TEXT NOT NULL DEFAULT '',
+    joined_at      TEXT NOT NULL,
+    left_at        TEXT
+  );
+
   /* 出國登記：全科共用一份，不分 LINE 群組 */
   CREATE TABLE IF NOT EXISTS travel_registrations (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -434,6 +442,30 @@ export const db = {
 
   // --- Rotations API ---
   // --- MedBase integration ---
+  line_groups: {
+    getAll() {
+      return sqlite.prepare('SELECT * FROM line_groups ORDER BY left_at IS NOT NULL, joined_at DESC').all();
+    },
+
+    recordJoin(lineGroupId, groupName) {
+      sqlite
+        .prepare(`INSERT INTO line_groups (line_group_id, group_name, joined_at)
+                  VALUES (?, ?, ?)
+                  ON CONFLICT(line_group_id) DO UPDATE SET
+                    group_name = CASE WHEN excluded.group_name != '' THEN excluded.group_name ELSE line_groups.group_name END,
+                    joined_at = excluded.joined_at, left_at = NULL`)
+        .run(lineGroupId, groupName, new Date().toISOString());
+    },
+
+    recordLeave(lineGroupId) {
+      sqlite.prepare('UPDATE line_groups SET left_at = ? WHERE line_group_id = ?').run(new Date().toISOString(), lineGroupId);
+    },
+
+    remove(lineGroupId) {
+      return sqlite.prepare('DELETE FROM line_groups WHERE line_group_id = ?').run(lineGroupId).changes > 0;
+    }
+  },
+
   medbase_links: {
     get(lineUserId) {
       return sqlite.prepare('SELECT * FROM medbase_links WHERE line_user_id = ?').get(lineUserId) || null;

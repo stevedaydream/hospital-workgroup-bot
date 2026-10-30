@@ -108,6 +108,12 @@ async function lineGet(path) {
   }
 }
 
+/** A group's display name from LINE; '' for rooms or when LINE does not answer. */
+async function getGroupName(groupId) {
+  if (!groupId.startsWith('C')) return '';
+  return (await lineGet(`/v2/bot/group/${groupId}/summary`))?.groupName || '';
+}
+
 /** Members in a group (a push to a group is billed once per member); null if unknown. */
 export async function getGroupMemberCount(groupId) {
   const path = groupId.startsWith('R') ? `/v2/bot/room/${groupId}/members/count` : `/v2/bot/group/${groupId}/members/count`;
@@ -903,6 +909,7 @@ export async function handleWebhookEvent(event) {
     // Keep the join quiet: just the group ID, with quick replies; the full menu comes on 「選單」
     const sourceId = event.source.groupId || event.source.roomId || event.source.userId;
     console.log(`[Webhook Join] Joined group/room/user ID: ${sourceId}`);
+    db.line_groups.recordJoin(sourceId, await getGroupName(sourceId));
 
     const quickItem = (label, text) => ({ type: "action", action: { type: "message", label, text } });
     await replyMessage(event.replyToken, {
@@ -918,6 +925,13 @@ export async function handleWebhookEvent(event) {
         ]
       }
     });
+    return;
+  }
+
+  if (event.type === 'leave') {
+    const sourceId = event.source.groupId || event.source.roomId;
+    console.log(`[Webhook Leave] Left group/room ID: ${sourceId}`);
+    if (sourceId) db.line_groups.recordLeave(sourceId);
     return;
   }
 

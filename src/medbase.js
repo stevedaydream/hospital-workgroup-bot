@@ -42,31 +42,42 @@ async function callMedbase(action, args = {}) {
 // ----------------------------------------------------
 const shortDate = date => `${Number(date.slice(5, 7))}/${Number(date.slice(8, 10))}（${dayOfWeek(date).slice(1)}）`;
 
-/** "D：甲、乙" per shift, in the order shifts first appear; days off are left out. */
-function formatDuty(items) {
-  const byShift = new Map();
-  for (const { name, shift } of items) {
-    if (/^off$/i.test(shift)) continue;
-    if (!byShift.has(shift)) byShift.set(shift, []);
-    byShift.get(shift).push(name);
-  }
-  if (!byShift.size) return '（沒有排班）';
-  return [...byShift].map(([shift, names]) => `${shift}：${names.join('、')}`).join('\n');
+// The NP/VS duty table (MedBase home page "今日值班"), same rules as MedBase
+// src/shared/duty.ts: NP per ward with 白八/夜八, VS shows 總值 only.
+const NP_WARDS = ['9A', '9B', '8A'];
+const VS_PRIMARY = '總值';
+const SHIFT_LABELS = { 白八: '白', 夜八: '夜' };
+
+/** One day of duty: a line per NP ward ("白 甲 62855｜夜 乙") and the VS on call. */
+async function dutyBlock(date, label) {
+  const { items } = await callMedbase('duty', { date });
+  const head = `【${label} ${shortDate(date)}】`;
+  if (!items.length) return `${head}\n尚無值班資料`;
+  const person = r => `${SHIFT_LABELS[r.shift] ?? r.shift} ${r.name}${r.extension ? ` ${r.extension}` : ''}`.trim();
+  const lines = NP_WARDS.map(ward => {
+    const rows = items.filter(r => r.ward === ward);
+    return `${ward}　${rows.length ? rows.map(person).join('｜') : '未排'}`;
+  });
+  const vs = items.filter(r => r.ward === VS_PRIMARY);
+  lines.push(`VS ${VS_PRIMARY}　${vs.length ? vs.map(r => `${r.name}${r.extension ? ` ${r.extension}` : ''}`).join('、') : '未排'}`);
+  return `${head}\n${lines.join('\n')}`;
 }
 
-async function dutyText(date, group, label) {
-  const r = await callMedbase('day', { date, group });
-  if (!r.published) return `📅 ${label} ${shortDate(date)}\n${Number(date.slice(5, 7))} 月班表尚未發布。`;
-  return `📅 ${label} ${shortDate(date)} 值班（${group}）\n${formatDuty(r.items)}`;
+async function dutyText(offsets) {
+  const today = todayInTaipei();
+  const labels = ['今天', '明天', '後天'];
+  const blocks = await Promise.all(offsets.map(o => dutyBlock(addDays(today, o), labels[o])));
+  return `📋 ${offsets.length > 1 ? '近期' : ''}值班\n\n${blocks.join('\n\n')}`;
 }
 
 // ----------------------------------------------------
 // Text commands (all answered by reply)
 // ----------------------------------------------------
-const DAY_COMMANDS = [
-  { re: /^(今天|今日)(值班|班表|誰值班)?$|^誰值班$|^值班$/, offset: 0, label: '今天' },
-  { re: /^(明天|明日)(值班|班表|誰值班)?$/, offset: 1, label: '明天' },
-  { re: /^後天(值班|班表|誰值班)?$/, offset: 2, label: '後天' }
+const DUTY_COMMANDS = [
+  { re: /^近期值班$|^誰值班$|^值班$/, offsets: [0, 1] },
+  { re: /^(今天|今日)(值班|班表|誰值班)?$/, offsets: [0] },
+  { re: /^(明天|明日)(值班|班表|誰值班)?$/, offsets: [1] },
+  { re: /^後天(值班|班表|誰值班)?$/, offsets: [2] }
 ];
 
 function linkHelp() {
@@ -123,24 +134,13 @@ export async function medbaseCommand(text, source) {
     return { type: 'text', text: '🔒 你的班表已私訊給你。\n若沒有收到，請先將「醫院群組助手」加為好友。' };
   }
 
-  const day = DAY_COMMANDS.find(c => c.re.test(text));
-  if (day) {
-    // The MedBase group configured for this chat, else the asker's own (linked) group.
-    const chatId = source.groupId || source.roomId;
-    const group = (chatId && db.medbase_groups.get(chatId)?.medbase_group)
-      || (userId && db.medbase_links.get(userId)?.medbase_group);
-    if (!group) {
-      return {
-        type: 'text',
-        text: chatId
-          ? `⚙️ 這個群組還沒對應 MedBase 排班群組。\n管理者可到管理頁「MedBase 串接」設定；或先綁定自己的 MedBase 帳號，就能直接查詢。\n${MEDBASE_API_URL}/settings`
-          : linkHelp()
-      };
-    }
+  // The duty table is hospital-wide, so it needs neither a linked account nor a group setting.
+  const duty = DUTY_COMMANDS.find(c => c.re.test(text));
+  if (duty) {
     try {
-      return { type: 'text', text: await dutyText(addDays(todayInTaipei(), day.offset), group, day.label) };
+      return { type: 'text', text: await dutyText(duty.offsets) };
     } catch (error) {
-      return { type: 'text', text: `❌ 查詢班表失敗：${error.message}` };
+      return { type: 'text', text: `❌ 查詢值班失敗：${error.message}` };
     }
   }
 
@@ -182,7 +182,7 @@ export async function sendDueReminders(pushMessage, now = new Date()) {
     // Mark first: a failure must not turn into a push every minute.
     db.medbase_groups.markReminded(g.line_group_id, today);
     try {
-      const text = await dutyText(addDays(today, 1), g.medbase_group, '明天');
+      const text = await dutyText([1]);
       await pushMessage(g.line_group_id, { type: 'text', text });
       console.log(`[MedBase] reminder sent to ${g.group_name || g.line_group_id}`);
     } catch (error) {

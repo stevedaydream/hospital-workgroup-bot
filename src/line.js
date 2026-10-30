@@ -275,7 +275,7 @@ function getMainMenuFlex(sourceId) {
               margin: "md",
               contents: [
                 { type: "button", action: { type: "message", label: "🗓 我的班", text: "我的班" }, style: "secondary", height: "sm" },
-                { type: "button", action: { type: "message", label: "👥 明天值班", text: "明天值班" }, style: "secondary", height: "sm" }
+                { type: "button", action: { type: "message", label: "📋 近期值班", text: "近期值班" }, style: "secondary", height: "sm" }
               ]
             },
             {

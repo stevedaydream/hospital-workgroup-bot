@@ -1,6 +1,6 @@
 import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
-import { SINGLE_IMAGE_PROMPT, MULTI_IMAGE_PROMPT, normalizeSingleResult, normalizeMultiResult } from './prompts.js';
+import { SINGLE_IMAGE_PROMPT, MULTI_IMAGE_PROMPT, ROSTER_PROMPT, normalizeSingleResult, normalizeMultiResult, normalizeRosterResult } from './prompts.js';
 
 dotenv.config();
 
@@ -166,5 +166,34 @@ export async function analyzeMultipleImages(imageBuffers) {
   } catch (error) {
     console.error('AI Engine [MULTI-ERROR]: Failed to analyze batch images:', error);
     throw new Error(`多圖整併辨識失敗: ${error.message}`);
+  }
+}
+
+/**
+ * Reads doctor names and their department headers from a roster photo.
+ * @param {Buffer} imageBuffer
+ * @returns {Promise<{doctors: Array<{name: string, department: string|null}>}>}
+ */
+export async function analyzeRoster(imageBuffer) {
+  if (!ai) {
+    console.log('AI Engine [MOCK]: Simulating roster extraction...');
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    return { doctors: [{ name: '陳鍾沛', department: 'Ortho' }, { name: '王彥傑', department: 'URO' }] };
+  }
+
+  try {
+    const response = await ai.models.generateContent({
+      model: GEMINI_MODEL_NAME,
+      contents: [
+        { inlineData: { data: imageBuffer.toString('base64'), mimeType: 'image/jpeg' } },
+        ROSTER_PROMPT
+      ],
+      config: { responseMimeType: 'application/json' }
+    });
+    console.log('AI Engine [RAW ROSTER RESPONSE]:', response.text);
+    return normalizeRosterResult(JSON.parse(response.text));
+  } catch (error) {
+    console.error('AI Engine [ROSTER-ERROR]: Failed to analyze roster:', error);
+    throw new Error(`名單辨識失敗: ${error.message}`);
   }
 }

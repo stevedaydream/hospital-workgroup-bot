@@ -44,6 +44,13 @@ export function analyzeMultipleImages(imageBuffers, onAttempt) {
     onAttempt);
 }
 
+export function analyzeRoster(imageBuffer, onAttempt) {
+  return withFallback('ROSTER',
+    attempt => local.analyzeRoster(imageBuffer, attempt),
+    () => gemini.analyzeRoster(imageBuffer),
+    onAttempt);
+}
+
 export const primaryProviderLabel = local.localAiEnabled ? '本機 AI' : 'Gemini AI';
 export const modelLabel = model => (model === 'gemini' ? 'Gemini' : local.modelLabel(model));
 export const isModelLoaded = model => (model === 'gemini' ? Promise.resolve(true) : local.isModelLoaded(model));

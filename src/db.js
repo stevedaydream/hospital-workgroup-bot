@@ -193,6 +193,33 @@ export const db = {
       return sqlite.prepare('SELECT * FROM doctor_group_mapping WHERE id = ?').get(info.lastInsertRowid);
     },
 
+    /**
+     * Inserts many mappings in one transaction (roster import), skipping any
+     * that already map the same key to the same group.
+     * @param {Array<{matchKey: string, groupName: string, lineGroupId: string, type: string}>} rows
+     */
+    async createMany(rows) {
+      const exists = sqlite.prepare(
+        'SELECT 1 FROM doctor_group_mapping WHERE UPPER(match_key) = UPPER(?) AND line_group_id = ?'
+      );
+      const insert = sqlite.prepare(
+        'INSERT INTO doctor_group_mapping (match_key, group_name, line_group_id, type) VALUES (?, ?, ?, ?)'
+      );
+      return sqlite.transaction(() => {
+        let created = 0;
+        let skipped = 0;
+        for (const r of rows) {
+          if (exists.get(r.matchKey, r.lineGroupId)) {
+            skipped++;
+          } else {
+            insert.run(r.matchKey, r.groupName, r.lineGroupId, r.type);
+            created++;
+          }
+        }
+        return { created, skipped };
+      })();
+    },
+
     async delete(id) {
       sqlite.prepare('DELETE FROM doctor_group_mapping WHERE id = ?').run(id);
       return { success: true };

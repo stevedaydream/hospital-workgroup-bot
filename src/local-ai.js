@@ -1,5 +1,5 @@
 import dotenv from 'dotenv';
-import { SINGLE_IMAGE_PROMPT, MULTI_IMAGE_PROMPT, normalizeSingleResult, normalizeMultiResult } from './prompts.js';
+import { SINGLE_IMAGE_PROMPT, MULTI_IMAGE_PROMPT, ROSTER_PROMPT, normalizeSingleResult, normalizeMultiResult, normalizeRosterResult } from './prompts.js';
 
 dotenv.config();
 
@@ -123,6 +123,16 @@ export async function analyzeMultipleImages(imageBuffers, onAttempt) {
   return { ...normalizeMultiResult(parsed), model };
 }
 
+/**
+ * Doctor names and department headers from a roster photo; also returns which local model answered.
+ * @param {Buffer} imageBuffer
+ * @param {(model: string) => void} [onAttempt] - called before each model is tried
+ */
+export async function analyzeRoster(imageBuffer, onAttempt) {
+  const { parsed, model } = await firstAvailable([imageBuffer], ROSTER_PROMPT, onAttempt);
+  return { ...normalizeRosterResult(parsed), model };
+}
+
 // The gateway knows every model's provider and whether it is up, even when
 // Port Monitor started it, so it answers "loading or recognizing?" for the
 // progress page. Resolves to null when that cannot be determined.
@@ -139,7 +149,8 @@ export async function isModelLoaded(model) {
     }
     const provider = modelOwners[model];
     if (!provider) return null;
-    const res = await fetch(`${GATEWAY_URL}/providers`, { signal: AbortSignal.timeout(3000) });
+    // /providers health-checks every provider and takes ~4s when they are down.
+    const res = await fetch(`${GATEWAY_URL}/providers`, { signal: AbortSignal.timeout(8000) });
     return Boolean((await res.json())[provider]?.ready);
   } catch {
     return null;

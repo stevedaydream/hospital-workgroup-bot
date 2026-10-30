@@ -300,6 +300,17 @@
         </div>
       </div>
 
+      <!-- Section: groups the bot has joined -->
+      <div class="admin-section">
+        <div class="section-title">
+          <span>🤖</span> Bot 已加入的群組
+        </div>
+        <div class="roster-panel">
+          <div id="line-groups" style="display: grid; gap: 10px;"></div>
+          <div class="roster-hint">Bot 被邀入群組時會自動記錄在這裡，下方各處的「選擇群組」也會列出這些群組。</div>
+        </div>
+      </div>
+
       <!-- Section: MedBase integration -->
       <div class="admin-section">
         <div class="section-title">
@@ -507,6 +518,7 @@
           console.warn("LINE LIFF not logged in. Standalone browser mode.");
         }
         
+        await loadLineGroups();
         await loadMappings();
         await loadMedbase();
         await loadUsers();
@@ -514,6 +526,7 @@
       } catch (err) {
         console.error('LIFF initialization failed', err);
         document.getElementById('meta-info').innerText = '管理端連線正常';
+        await loadLineGroups();
         await loadMappings();
         await loadMedbase();
         await loadUsers();
@@ -634,11 +647,13 @@
     let currentMappings = [];
     let rosterRows = [];     // [{ name, department, include, groupId }]
     let extraGroups = [];    // groups typed in on this page: [{ id, name }]
+    let joinedGroups = [];   // groups the bot was invited into: rows of /api/line-groups
     let rosterPoll = null;
 
     // Groups to offer: every group already in the mapping table plus any added here.
     function rosterGroups() {
       const byId = new Map();
+      joinedGroups.filter(g => !g.left_at).forEach(g => byId.set(g.line_group_id, g.group_name || g.line_group_id));
       currentMappings.forEach(m => byId.set(m.line_group_id, m.group_name));
       extraGroups.forEach(g => byId.set(g.id, g.name));
       return [...byId].map(([id, name]) => ({ id, name }));
@@ -868,6 +883,52 @@
     // Rough monthly push counts: a daily reminder is ~30 pushes, publish notices ~2.
     const REMINDERS_PER_MONTH = 30;
     const PUBLISHES_PER_MONTH = 2;
+
+    async function loadLineGroups() {
+      const container = document.getElementById('line-groups');
+      try {
+        const res = await fetch('/api/line-groups');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        joinedGroups = await res.json();
+      } catch (error) {
+        container.innerHTML = `<div class="roster-hint">無法讀取群組紀錄：${escapeHtml(error.message)}</div>`;
+        return;
+      }
+      container.innerHTML = joinedGroups.length ? joinedGroups.map(g => {
+        const id = escapeHtml(g.line_group_id);
+        const when = new Date(g.left_at || g.joined_at).toLocaleString('zh-TW', { hour12: false });
+        return `
+          <div class="mb-card">
+            <div class="mb-head">
+              <b>${escapeHtml(g.group_name || '未命名群組')}</b>
+              <span class="mb-meta">${id}</span>
+            </div>
+            <div class="mb-line">
+              <span class="mb-cost">${g.left_at ? `已退出 · ${when}` : `加入於 ${when}`}</span>
+              <span style="margin-left: auto; display: flex; gap: 6px;">
+                <button class="btn-ghost" onclick="copyGroupId('${id}')">複製 ID</button>
+                ${g.left_at ? `<button class="btn-ghost" onclick="deleteLineGroup('${id}')">刪除紀錄</button>` : ''}
+              </span>
+            </div>
+          </div>`;
+      }).join('') : '<div class="roster-hint">尚無紀錄，把 Bot 邀進群組後就會出現。</div>';
+    }
+
+    async function copyGroupId(lineGroupId) {
+      try {
+        await navigator.clipboard.writeText(lineGroupId);
+        showToast('已複製群組 ID');
+      } catch {
+        showToast('無法複製，請手動選取', true);
+      }
+    }
+
+    async function deleteLineGroup(lineGroupId) {
+      if (!confirm('刪除這筆群組紀錄？')) return;
+      const res = await fetch(`/api/line-groups/${encodeURIComponent(lineGroupId)}`, { method: 'DELETE' });
+      if (!res.ok) return showToast('刪除失敗', true);
+      await loadLineGroups();
+    }
 
     async function loadMedbase() {
       try {

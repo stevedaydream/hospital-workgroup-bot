@@ -372,6 +372,13 @@ app.post('/api/doctor-mappings/bulk', async (c) => {
   }
 });
 
+// LINE groups the bot has been invited into, recorded on join (admin page).
+app.get('/api/line-groups', (c) => c.json(db.line_groups.getAll()));
+
+app.delete('/api/line-groups/:lineGroupId', (c) => {
+  return c.json({ removed: db.line_groups.remove(c.req.param('lineGroupId')) });
+});
+
 // MedBase settings per LINE group (admin page). Member counts come from LINE
 // so the page can show what a daily reminder costs against the push quota.
 app.get('/api/medbase/groups', async (c) => {

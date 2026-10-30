@@ -120,9 +120,17 @@ app.get('/liff/admin', (c) => {
   return c.redirect('/admin.html' + query);
 });
 
+// Without its own LIFF app, the travel page rides on the calendar one: the menu
+// opens it with ?page=travel, which LIFF may first hand over inside liff.state.
 app.get('/liff/calendar', (c) => {
   const query = c.req.url.includes('?') ? c.req.url.substring(c.req.url.indexOf('?')) : '';
-  return c.redirect('/calendar.html' + query);
+  const wantsTravel = c.req.query('page') === 'travel' || (c.req.query('liff.state') || '').includes('page=travel');
+  return c.redirect((wantsTravel ? '/travel.html' : '/calendar.html') + query);
+});
+
+app.get('/liff/travel', (c) => {
+  const query = c.req.url.includes('?') ? c.req.url.substring(c.req.url.indexOf('?')) : '';
+  return c.redirect('/travel.html' + query);
 });
 
 // ----------------------------------------------------
@@ -178,6 +186,7 @@ app.get('/api/config', (c) => {
     LIFF_DISPATCH_ID: process.env.LIFF_DISPATCH_ID,
     LIFF_ADMIN_ID: process.env.LIFF_ADMIN_ID,
     LIFF_CALENDAR_ID: process.env.LIFF_CALENDAR_ID,
+    LIFF_TRAVEL_ID: process.env.LIFF_TRAVEL_ID || null,
   });
 });
 
@@ -518,6 +527,62 @@ app.delete('/api/events/:id', async (c) => {
   } catch (error) {
     return c.json({ error: error.message }, 500);
   }
+});
+
+// ----------------------------------------------------
+// Overseas travel registrations (public/travel.html)
+// ----------------------------------------------------
+const YMD = /^\d{4}-\d{2}-\d{2}$/;
+const TRAVEL_PURPOSES = new Set(['開會研習', '休假旅遊', '其他']);
+
+/** Normalises a travel form body; returns { trip } or { error }. */
+function parseTravel(body) {
+  const text = (value, max) => {
+    const s = String(value ?? '').trim().slice(0, max);
+    return s || null;
+  };
+  const trip = {
+    traveler: text(body.traveler, 30),
+    destination: text(body.destination, 50),
+    purpose: text(body.purpose, 10),
+    depart_date: text(body.departDate, 10),
+    depart_time: text(body.departTime, 5),
+    depart_flight: text(body.departFlight, 30),
+    return_date: text(body.returnDate, 10),
+    return_time: text(body.returnTime, 5),
+    return_flight: text(body.returnFlight, 30),
+    deputy: text(body.deputy, 30),
+    note: text(body.note, 300)
+  };
+  if (!trip.traveler || !trip.destination) return { error: '請填寫姓名與目的地' };
+  if (!YMD.test(trip.depart_date || '') || !YMD.test(trip.return_date || '')) return { error: '請填寫出發與返國日期' };
+  if (trip.return_date < trip.depart_date) return { error: '返國日期不能早於出發日期' };
+  if ((trip.depart_time && !HHMM.test(trip.depart_time)) || (trip.return_time && !HHMM.test(trip.return_time))) {
+    return { error: '時間需為 HH:MM' };
+  }
+  if (trip.purpose && !TRAVEL_PURPOSES.has(trip.purpose)) return { error: '事由選項錯誤' };
+  return { trip };
+}
+
+app.get('/api/travels', (c) => {
+  return c.json(db.travels.list({ includePast: c.req.query('past') === '1' }));
+});
+
+app.post('/api/travels', async (c) => {
+  const { trip, error } = parseTravel(await c.req.json().catch(() => ({})));
+  if (error) return c.json({ error }, 400);
+  return c.json(db.travels.create(trip, c.get('displayName') || '未知人員'));
+});
+
+app.put('/api/travels/:id', async (c) => {
+  const { trip, error } = parseTravel(await c.req.json().catch(() => ({})));
+  if (error) return c.json({ error }, 400);
+  const updated = db.travels.update(Number(c.req.param('id')), trip, c.get('displayName') || '未知人員');
+  return updated ? c.json(updated) : c.json({ error: 'not_found' }, 404);
+});
+
+app.delete('/api/travels/:id', (c) => {
+  return c.json({ removed: db.travels.remove(Number(c.req.param('id'))) });
 });
 
 // Fetch rotation settings

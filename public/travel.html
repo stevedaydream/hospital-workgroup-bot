@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>出國時刻登記</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <style>
+    .trip-list {
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      margin-bottom: 20px;
+    }
+
+    .section-heading {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--accent-ink);
+      letter-spacing: 0.04em;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .section-heading::after {
+      content: "";
+      flex: 1;
+      height: 1px;
+      background: var(--line);
+    }
+    .section-heading.past { color: var(--ink-3); }
+
+    .trip-card {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 12px 14px;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-bottom: 8px;
+      transition: var(--transition);
+    }
+    .trip-card.abroad {
+      background: var(--teal-tint);
+      border-color: color-mix(in srgb, var(--teal) 25%, transparent);
+    }
+    .trip-card.past { opacity: 0.7; }
+
+    .trip-head {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      flex-wrap: wrap;
+      padding-right: 68px;
+    }
+    .trip-name { font-size: 15px; font-weight: 700; color: var(--ink); }
+    .trip-dest { font-size: 13px; color: var(--ink-2); }
+    .purpose-badge {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: var(--blue-tint);
+      color: var(--blue);
+    }
+
+    .leg {
+      display: grid;
+      grid-template-columns: 34px 1fr;
+      gap: 2px 8px;
+      font-size: 13px;
+      color: var(--ink);
+      font-variant-numeric: tabular-nums;
+    }
+    .leg-label { font-size: 11px; font-weight: 700; color: var(--ink-3); padding-top: 1px; }
+    .leg-flight { color: var(--ink-2); }
+
+    .trip-meta {
+      font-size: 12px;
+      color: var(--ink-2);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px 12px;
+    }
+    .trip-note { font-size: 13px; color: var(--ink-2); line-height: 1.55; }
+
+    .trip-actions {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      display: flex;
+      gap: 6px;
+    }
+
+    .empty-state { text-align: center; color: var(--ink-3); padding: 32px 12px; font-size: 13px; }
+    .form-hint { font-size: 11px; color: var(--ink-3); margin-top: 4px; }
+    .modal-card { max-width: 460px; }
+  </style>
+</head>
+<body>
+  <div class="liff-container">
+    <div class="user-badge" id="user-badge" style="display: none;">
+      <img class="user-avatar" id="user-avatar" src="" alt="avatar">
+      <span id="user-name">載入同仁資料中...</span>
+    </div>
+
+    <div class="header">
+      <div class="header-icon">✈️</div>
+      <h1>出國時刻登記</h1>
+      <p>登記出國日期、航班與代理人，方便科內安排</p>
+      <div class="meta-info" id="meta-info">連線中...</div>
+    </div>
+
+    <div class="directory-header">
+      <button class="filter-btn" id="btn-past" onclick="togglePast()">顯示已返國</button>
+      <button class="btn-add" onclick="openModal()">
+        <span>＋</span> 登記出國
+      </button>
+    </div>
+
+    <div class="trip-list" id="trip-list">
+      <div class="empty-state">正在載入出國登記...</div>
+    </div>
+
+    <button class="btn-secondary" style="width: 100%; padding: 12px;" onclick="closeLiff()">
+      ✕ 關閉
+    </button>
+  </div>
+
+  <div class="modal-overlay" id="trip-modal">
+    <div class="modal-card">
+      <div class="modal-title" id="modal-title">✈️ 登記出國</div>
+
+      <div class="form-row">
+        <div class="form-group" style="flex: 1;">
+          <label class="form-label" style="font-size: 12px;">姓名</label>
+          <input type="text" class="input-field" id="input-traveler" maxlength="30">
+        </div>
+        <div class="form-group" style="flex: 1;">
+          <label class="form-label" style="font-size: 12px;">事由</label>
+          <select class="input-field" id="input-purpose">
+            <option value="">（未填）</option>
+            <option value="開會研習">開會研習</option>
+            <option value="休假旅遊">休假旅遊</option>
+            <option value="其他">其他</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" style="font-size: 12px;">目的地</label>
+        <input type="text" class="input-field" id="input-destination" maxlength="50" placeholder="例如：日本東京">
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" style="font-size: 12px;">去程（出發日期・起飛時間・航班）</label>
+        <div style="display: flex; gap: 8px;">
+          <input type="date" class="input-field" id="input-depart-date" style="flex: 1.4;">
+          <input type="time" class="input-field" id="input-depart-time" style="flex: 1;">
+        </div>
+        <input type="text" class="input-field" id="input-depart-flight" maxlength="30" placeholder="航班（選填），例如 BR198" style="margin-top: 8px;">
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" style="font-size: 12px;">回程（返國日期・抵台時間・航班）</label>
+        <div style="display: flex; gap: 8px;">
+          <input type="date" class="input-field" id="input-return-date" style="flex: 1.4;">
+          <input type="time" class="input-field" id="input-return-time" style="flex: 1;">
+        </div>
+        <input type="text" class="input-field" id="input-return-flight" maxlength="30" placeholder="航班（選填），例如 BR197" style="margin-top: 8px;">
+        <div class="form-hint">時間與航班可之後再補。</div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" style="font-size: 12px;">代理人（選填）</label>
+        <input type="text" class="input-field" id="input-deputy" maxlength="30" placeholder="例如：王醫師">
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" style="font-size: 12px;">備註（選填）</label>
+        <input type="text" class="input-field" id="input-note" maxlength="300" placeholder="例如：門診已停診、可 LINE 聯絡">
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick="closeModal()">取消</button>
+        <button class="btn-save-confirm" id="btn-save-confirm" onclick="saveTrip()">確認儲存</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast-notify">
+    <div class="toast-icon" id="toast-icon"></div>
+    <span id="toast-text">更新成功！</span>
+  </div>
+
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script src="/js/api.js"></script>
+  <script>
+    let userName = '';
+    let trips = [];
+    let showPast = false;
+    let editingId = null;
+
+    // Taiwan date, so "目前在國外" flips at local midnight rather than 08:00.
+    const todayStr = () => new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit'
+    }).format(new Date());
+
+    function showToast(message, isError = false) {
+      const toast = document.getElementById('toast-notify');
+      document.getElementById('toast-text').innerText = message;
+      document.getElementById('toast-icon').className = isError ? 'toast-icon error' : 'toast-icon';
+      toast.classList.add('show');
+      setTimeout(() => toast.classList.remove('show'), 3000);
+    }
+
+    async function initLiff() {
+      try {
+        const config = await (await fetch('/api/config')).json();
+        await liff.init({ liffId: config.LIFF_TRAVEL_ID || config.LIFF_CALENDAR_ID });
+
+        if (liff.isLoggedIn()) {
+          window.__setIdToken(liff.getIDToken());
+          const profile = await liff.getProfile();
+          userName = profile.displayName;
+          document.getElementById('user-name').innerText = userName;
+          if (profile.pictureUrl) document.getElementById('user-avatar').src = profile.pictureUrl;
+          document.getElementById('user-badge').style.display = 'flex';
+
+          await fetch('/api/users/sync', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ lineUserId: profile.userId, displayName: userName })
+          });
+        }
+      } catch (err) {
+        console.error('LIFF initialization failed', err);
+      }
+      await fetchTrips();
+    }
+
+    async function fetchTrips() {
+      try {
+        const response = await fetch(`/api/travels${showPast ? '?past=1' : ''}`);
+        if (!response.ok) throw new Error(response.status);
+        trips = await response.json();
+        renderTrips();
+      } catch (error) {
+        document.getElementById('trip-list').innerHTML =
+          '<div class="empty-state" style="color: var(--rose);">無法取得出國登記資料</div>';
+        document.getElementById('meta-info').innerText = '連線異常';
+      }
+    }
+
+    function togglePast() {
+      showPast = !showPast;
+      const btn = document.getElementById('btn-past');
+      btn.classList.toggle('active', showPast);
+      btn.innerText = showPast ? '隱藏已返國' : '顯示已返國';
+      fetchTrips();
+    }
+
+    function fmtDate(dateStr) {
+      const d = new Date(`${dateStr}T00:00:00Z`);
+      const w = ['日', '一', '二', '三', '四', '五', '六'][d.getUTCDay()];
+      return `${dateStr.slice(5).replace('-', '/')}（${w}）`;
+    }
+
+    function tripDays(t) {
+      const ms = new Date(`${t.return_date}T00:00:00Z`) - new Date(`${t.depart_date}T00:00:00Z`);
+      return Math.round(ms / 86400000) + 1;
+    }
+
+    function renderTrips() {
+      const container = document.getElementById('trip-list');
+      const today = todayStr();
+      const abroad = trips.filter(t => t.depart_date <= today && t.return_date >= today);
+      const upcoming = trips.filter(t => t.depart_date > today).sort((a, b) => a.depart_date.localeCompare(b.depart_date));
+      const past = trips.filter(t => t.return_date < today);
+
+      const sections = [
+        ['🌏 目前在國外', abroad, 'abroad'],
+        ['🗓 即將出國', upcoming, ''],
+        ...(showPast ? [['已返國', past, 'past']] : [])
+      ].filter(([, list]) => list.length);
+
+      if (!sections.length) {
+        container.innerHTML = '<div class="empty-state">目前沒有出國登記。<br>點右上「登記出國」新增。</div>';
+      } else {
+        container.innerHTML = sections.map(([title, list, kind]) => `
+          <div>
+            <div class="section-heading ${kind === 'past' ? 'past' : ''}">${title}（${list.length}）</div>
+            ${list.map(t => tripCard(t, kind)).join('')}
+          </div>`).join('');
+      }
+
+      document.getElementById('meta-info').innerText = abroad.length
+        ? `目前 ${abroad.length} 人在國外・${upcoming.length} 筆即將出國`
+        : `${upcoming.length} 筆即將出國`;
+    }
+
+    function leg(label, date, time, flight) {
+      const when = `${fmtDate(date)}${time ? ' ' + time : ''}`;
+      return `<span class="leg-label">${label}</span>
+              <span>${when}${flight ? ` <span class="leg-flight">・${escapeHtml(flight)}</span>` : ''}</span>`;
+    }
+
+    function tripCard(t, kind) {
+      const meta = [`<span>共 ${tripDays(t)} 天</span>`];
+      if (t.deputy) meta.push(`<span>🤝 代理：${escapeHtml(t.deputy)}</span>`);
+      meta.push(`<span>👤 ${escapeHtml(t.updated_by)} 登記</span>`);
+      return `
+        <div class="trip-card ${kind}">
+          <div class="trip-head">
+            <span class="trip-name">${escapeHtml(t.traveler)}</span>
+            <span class="trip-dest">📍 ${escapeHtml(t.destination)}</span>
+            ${t.purpose ? `<span class="purpose-badge">${escapeHtml(t.purpose)}</span>` : ''}
+          </div>
+          <div class="leg">
+            ${leg('去程', t.depart_date, t.depart_time, t.depart_flight)}
+            ${leg('回程', t.return_date, t.return_time, t.return_flight)}
+          </div>
+          <div class="trip-meta">${meta.join('')}</div>
+          ${t.note ? `<div class="trip-note">${escapeHtml(t.note)}</div>` : ''}
+          <div class="trip-actions">
+            <button class="action-btn" onclick="openModal(${t.id})" title="修改">✏️</button>
+            <button class="action-btn delete-btn" onclick="deleteTrip(${t.id})" title="刪除">🗑️</button>
+          </div>
+        </div>`;
+    }
+
+    const FIELDS = {
+      traveler: 'input-traveler', purpose: 'input-purpose', destination: 'input-destination',
+      departDate: 'input-depart-date', departTime: 'input-depart-time', departFlight: 'input-depart-flight',
+      returnDate: 'input-return-date', returnTime: 'input-return-time', returnFlight: 'input-return-flight',
+      deputy: 'input-deputy', note: 'input-note'
+    };
+    const COLUMNS = {
+      traveler: 'traveler', purpose: 'purpose', destination: 'destination',
+      departDate: 'depart_date', departTime: 'depart_time', departFlight: 'depart_flight',
+      returnDate: 'return_date', returnTime: 'return_time', returnFlight: 'return_flight',
+      deputy: 'deputy', note: 'note'
+    };
+
+    function openModal(id = null) {
+      editingId = id;
+      const trip = id ? trips.find(t => t.id === id) : null;
+      for (const [key, elId] of Object.entries(FIELDS)) {
+        document.getElementById(elId).value = trip ? (trip[COLUMNS[key]] || '') : '';
+      }
+      if (!trip) {
+        document.getElementById('input-traveler').value = userName;
+        document.getElementById('input-depart-date').value = todayStr();
+      }
+      document.getElementById('modal-title').innerText = trip ? '✏️ 修改出國登記' : '✈️ 登記出國';
+      document.getElementById('trip-modal').classList.add('show');
+    }
+
+    function closeModal() {
+      document.getElementById('trip-modal').classList.remove('show');
+    }
+
+    // Picking a departure later than the return date drags the return along.
+    document.getElementById('input-depart-date').addEventListener('change', (e) => {
+      const ret = document.getElementById('input-return-date');
+      ret.min = e.target.value;
+      if (ret.value && ret.value < e.target.value) ret.value = e.target.value;
+    });
+
+    async function saveTrip() {
+      const body = {};
+      for (const [key, elId] of Object.entries(FIELDS)) body[key] = document.getElementById(elId).value.trim();
+
+      if (!body.traveler || !body.destination || !body.departDate || !body.returnDate) {
+        showToast('請填寫姓名、目的地、出發與返國日期', true);
+        return;
+      }
+      if (body.returnDate < body.departDate) {
+        showToast('返國日期不能早於出發日期', true);
+        return;
+      }
+
+      const btn = document.getElementById('btn-save-confirm');
+      btn.disabled = true;
+      btn.innerText = '儲存中...';
+      try {
+        const response = await fetch(editingId ? `/api/travels/${editingId}` : '/api/travels', {
+          method: editingId ? 'PUT' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          showToast(result.error || '伺服器處理錯誤', true);
+          return;
+        }
+        showToast(editingId ? '已更新出國登記' : '已登記出國');
+        closeModal();
+        await fetchTrips();
+      } catch (error) {
+        showToast('連線失敗：' + error.message, true);
+      } finally {
+        btn.disabled = false;
+        btn.innerText = '確認儲存';
+      }
+    }
+
+    async function deleteTrip(id) {
+      const trip = trips.find(t => t.id === id);
+      if (!confirm(`確定刪除「${trip ? trip.traveler + '・' + trip.destination : ''}」的出國登記？`)) return;
+      try {
+        const response = await fetch(`/api/travels/${id}`, { method: 'DELETE' });
+        if (!response.ok) throw new Error(response.status);
+        showToast('已刪除');
+        await fetchTrips();
+      } catch (error) {
+        showToast('無法刪除：' + error.message, true);
+      }
+    }
+
+    function closeLiff() {
+      if (liff.isInClient()) {
+        liff.closeWindow();
+      } else {
+        alert('請在 LINE 內點選以關閉網頁。');
+      }
+    }
+
+    function escapeHtml(text) {
+      if (!text) return '';
+      return String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    window.onload = initLiff;
+  </script>
+</body>
+</html>

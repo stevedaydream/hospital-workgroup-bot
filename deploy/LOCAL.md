@@ -77,6 +77,7 @@ npx vercel deploy --prod --scope steves-projects-37bb3607
 
 - Webhook URL：`https://relay-xi-pied.vercel.app/webhook` →「Verify」應回 Success
 - LIFF Endpoint：`.../liff/notes`、`.../liff/dispatch`、`.../liff/admin`、`.../liff/calendar`
+- 出國登記（選用）：另建 LIFF，Endpoint `.../liff/travel`，ID 填 `LIFF_TRAVEL_ID`。沒填時經行事曆的 LIFF 開啟（`?page=travel`），不必另外設定。
 
 ## 4. 啟動與開機自動執行
 

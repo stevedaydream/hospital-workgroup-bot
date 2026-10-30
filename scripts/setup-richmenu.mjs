@@ -8,8 +8,9 @@
 // The image is scripts/richmenu/richmenu.png (2500×843), rendered from
 // richmenu.html with headless Edge:
 //   msedge --headless=new --window-size=2500,843 --user-data-dir=<tmp> --screenshot=richmenu.png richmenu.html
-// Taps on 我的班 / 明天值班 / 今天值班 / 功能選單 send plain text, so the bot
-// answers with free replies; MedBase and 注意事項 open URLs.
+// Taps on 我的班 / 近期值班 / 功能選單 send plain text, so the bot answers with
+// free replies (我的班 in a group goes to the 1:1 chat); 行事曆, MedBase and
+// 注意事項 open URLs.
 
 import fs from 'fs';
 import path from 'path';
@@ -20,6 +21,7 @@ dotenv.config();
 const TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN;
 const MEDBASE_URL = (process.env.MEDBASE_API_URL || 'https://medbase-mobile.vercel.app').replace(/\/+$/, '');
 const NOTES_URL = `https://liff.line.me/${process.env.LIFF_NOTES_ID}`;
+const CALENDAR_URL = `https://liff.line.me/${process.env.LIFF_CALENDAR_ID}`;
 const IMAGE = path.resolve('scripts/richmenu/richmenu.png');
 const MENU_NAME = 'hospital-bot-main';
 
@@ -35,8 +37,8 @@ const menu = {
   chatBarText: '班表與功能',
   areas: [
     { bounds: cell(0, 0), action: { type: 'message', label: '我的班', text: '我的班' } },
-    { bounds: cell(1, 0), action: { type: 'message', label: '明天值班', text: '明天值班' } },
-    { bounds: cell(2, 0), action: { type: 'message', label: '今天值班', text: '今天值班' } },
+    { bounds: cell(1, 0), action: { type: 'message', label: '近期值班', text: '近期值班' } },
+    { bounds: cell(2, 0), action: { type: 'uri', label: '行事曆', uri: CALENDAR_URL } },
     { bounds: cell(0, 1), action: { type: 'uri', label: 'MedBase', uri: `${MEDBASE_URL}/schedule` } },
     { bounds: cell(1, 1), action: { type: 'uri', label: '注意事項', uri: NOTES_URL } },
     { bounds: cell(2, 1), action: { type: 'message', label: '功能選單', text: '選單' } }
@@ -61,7 +63,7 @@ if (!process.argv.includes('--apply')) {
 }
 
 if (!TOKEN) throw new Error('LINE_CHANNEL_ACCESS_TOKEN is not set');
-if (!process.env.LIFF_NOTES_ID) throw new Error('LIFF_NOTES_ID is not set');
+if (!process.env.LIFF_NOTES_ID || !process.env.LIFF_CALENDAR_ID) throw new Error('LIFF_NOTES_ID / LIFF_CALENDAR_ID is not set');
 
 const { richMenuId } = await line('POST', 'https://api.line.me/v2/bot/richmenu', menu);
 console.log('Created', richMenuId);

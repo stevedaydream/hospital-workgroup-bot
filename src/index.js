@@ -3,6 +3,7 @@ import { cors } from 'hono/cors';
 import { serve } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
 import dotenv from 'dotenv';
+import { execSync } from 'node:child_process';
 import { db } from './db.js';
 import { requireLiffAuth, requireAdminKey } from './auth.js';
 import { verifySignature, handleWebhookEvent, pushMessage, GROUP_WINDOW_MS } from './line.js';
@@ -24,6 +25,18 @@ const PORT = process.env.PORT || 3000;
 
 // Enable CORS
 app.use('*', cors());
+
+// Health check for Port Monitor. The commit shows whether the running process
+// has picked up the latest code (npm start does not reload on change).
+const STARTED_AT = new Date().toISOString();
+const COMMIT = (() => {
+  try {
+    return execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+  } catch {
+    return null;
+  }
+})();
+app.get('/health', (c) => c.json({ status: 'ok', startedAt: STARTED_AT, commit: COMMIT }));
 
 // ----------------------------------------------------
 // API Authentication

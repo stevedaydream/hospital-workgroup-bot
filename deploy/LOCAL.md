@@ -91,8 +91,12 @@ npm start
 登入時自動啟動（工作排程器，不需系統管理員權限）：
 
 ```powershell
-schtasks /Create /SC ONLOGON /TN "HospitalBot" /TR "cmd /c cd /d H:\project\hospital-workgroup-bot && npm start >> data\bot.log 2>&1"
+schtasks /Create /SC ONLOGON /TN "HospitalBot" /TR "H:\project\hospital-workgroup-bot\scripts\start-bot.bat"
 ```
+
+`npm start` 不會因程式碼變更而重新載入；改完程式（含 `git pull`）都要重啟 bot。`GET /health` 回傳 `startedAt` 與 `commit`，可確認跑的是不是最新版。
+
+**納入 Port Monitor 監控**（桌面操作）：新增目標 Port `3000`、健康網址 `http://127.0.0.1:3000/health`，啟動腳本填 `H:\project\hospital-workgroup-bot\scripts\start-bot.bat`（不需參數）。重啟 = 在服務列按電源鈕停止，再按「啟動」；Port Monitor 的「重新啟動」目前只開放給 LiveCatch 8765。
 
 Local AI Gateway 已有登入自動啟動的排程（「Local AI Gateway」）。有 Port Monitor 時它會自動拉起模型；沒有 Port Monitor 時，Strata 或 Qwen3.6 至少要手動開一個，否則所有辨識都會失敗或走 Gemini。
 

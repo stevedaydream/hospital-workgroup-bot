@@ -142,19 +142,20 @@ async function downloadMessageContent(messageId) {
 // Rich Flex Messages (JSON)
 // ----------------------------------------------------
 
-/** Reply text for 出國: who is abroad now, who leaves soon, and the form link. */
+/** Reply text for 出國: who is away (abroad or on long leave) now, who leaves soon, and the form link. */
 function travelSummaryText() {
   const today = todayInTaipei();
   const fmt = (date) => `${date.slice(5).replace('-', '/')}(${dayOfWeek(date).slice(1)})`;
-  const line = (t) => `• ${t.traveler}｜${t.destination}｜${fmt(t.depart_date)}–${fmt(t.return_date)}` +
+  const where = (t) => t.kind === '長假' ? `長假${t.destination ? ` ${t.destination}` : ''}` : (t.destination || '出國');
+  const line = (t) => `• ${t.traveler}｜${where(t)}｜${fmt(t.depart_date)}–${fmt(t.return_date)}` +
     (t.deputy ? `｜代理 ${t.deputy}` : '');
   const trips = db.travels.list();
   const abroad = trips.filter(t => t.depart_date <= today);
   const upcoming = trips.filter(t => t.depart_date > today);
 
-  const parts = ['✈️ 出國登記'];
-  parts.push(abroad.length ? '\n目前在國外：\n' + abroad.map(line).join('\n') : '\n目前沒有人在國外。');
-  if (upcoming.length) parts.push('\n即將出國：\n' + upcoming.map(line).join('\n'));
+  const parts = ['✈️ 出國與長假'];
+  parts.push(abroad.length ? '\n目前不在（出國／長假）：\n' + abroad.map(line).join('\n') : '\n目前沒有人出國或休長假。');
+  if (upcoming.length) parts.push('\n即將出國／長假：\n' + upcoming.map(line).join('\n'));
   parts.push('\n登記或修改：\n' + travelLiffUrl());
   return parts.join('\n');
 }
@@ -234,7 +235,7 @@ function getMainMenuFlex(sourceId) {
             type: "button",
             action: {
               type: "uri",
-              label: "✈️ 出國時刻登記",
+              label: "✈️ 出國與長假登記",
               uri: travelLiffUrl()
             },
             style: "primary",
@@ -934,7 +935,7 @@ export async function handleWebhookEvent(event) {
           type: "text",
           text: `📝 點選此連結編輯注意事項：\n${liffUrl}`
         });
-      } else if (text === '出國' || text === '出國登記' || text === '誰出國') {
+      } else if (text === '出國' || text === '出國登記' || text === '誰出國' || text === '長假' || text === '誰請長假') {
         await replyMessage(event.replyToken, { type: 'text', text: travelSummaryText() });
       } else if (text === '行事曆' || text === '行程' || text === '活動') {
         const liffUrl = `https://liff.line.me/${process.env.LIFF_CALENDAR_ID || 'placeholder_calendar_liff_id'}?groupId=${sourceId}`;

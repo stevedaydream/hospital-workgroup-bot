@@ -542,6 +542,7 @@ function parseTravel(body) {
     return s || null;
   };
   const trip = {
+    kind: body.kind === '長假' ? '長假' : '出國',
     traveler: text(body.traveler, 30),
     destination: text(body.destination, 50),
     purpose: text(body.purpose, 10),
@@ -554,7 +555,9 @@ function parseTravel(body) {
     deputy: text(body.deputy, 30),
     note: text(body.note, 300)
   };
-  if (!trip.traveler || !trip.destination) return { error: '請填寫姓名與目的地' };
+  // Only who and when are required; destination, times and flights can come later.
+  if (!trip.traveler) return { error: '請填寫姓名' };
+  trip.destination = trip.destination || '';
   if (!YMD.test(trip.depart_date || '') || !YMD.test(trip.return_date || '')) return { error: '請填寫出發與返國日期' };
   if (trip.return_date < trip.depart_date) return { error: '返國日期不能早於出發日期' };
   if ((trip.depart_time && !HHMM.test(trip.depart_time)) || (trip.return_time && !HHMM.test(trip.return_time))) {

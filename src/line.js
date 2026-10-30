@@ -120,20 +120,20 @@ function getMainMenuFlex(sourceId) {
       header: {
         type: "box",
         layout: "vertical",
-        backgroundColor: "#0d9488",
+        backgroundColor: "#e6f4f2",
         paddingAll: "20px",
         contents: [
           {
             type: "text",
             text: "醫院工作助手",
-            color: "#ffffff",
+            color: "#0f5f58",
             weight: "bold",
             size: "xl"
           },
           {
             type: "text",
             text: "Hospital Workgroup Assistant",
-            color: "#e2e8f0",
+            color: "#4f5d68",
             size: "xs",
             margin: "xs"
           }
@@ -142,14 +142,14 @@ function getMainMenuFlex(sourceId) {
       body: {
         type: "box",
         layout: "vertical",
-        backgroundColor: "#0f172a",
+        backgroundColor: "#ffffff",
         paddingAll: "20px",
         spacing: "md",
         contents: [
           {
             type: "text",
             text: "💡 便捷功能選單",
-            color: "#ffffff",
+            color: "#17212b",
             weight: "bold",
             size: "md"
           },
@@ -161,7 +161,7 @@ function getMainMenuFlex(sourceId) {
               uri: liffUrl
             },
             style: "primary",
-            color: "#0ea5e9",
+            color: "#0369a1",
             height: "sm"
           },
           {
@@ -172,7 +172,7 @@ function getMainMenuFlex(sourceId) {
               uri: calendarLiffUrl
             },
             style: "primary",
-            color: "#a855f7",
+            color: "#6d28d9",
             height: "sm",
             margin: "md"
           },
@@ -184,7 +184,7 @@ function getMainMenuFlex(sourceId) {
               uri: dispatchLiffUrl
             },
             style: "primary",
-            color: "#10b981",
+            color: "#047857",
             height: "sm",
             margin: "md"
           },
@@ -196,13 +196,13 @@ function getMainMenuFlex(sourceId) {
               uri: adminLiffUrl
             },
             style: "primary",
-            color: "#f43f5e",
+            color: "#be123c",
             height: "sm",
             margin: "md"
           },
           {
             type: "separator",
-            color: "#334155",
+            color: "#e1e6e9",
             margin: "md"
           },
           {
@@ -214,26 +214,26 @@ function getMainMenuFlex(sourceId) {
               {
                 type: "text",
                 text: "📋 Case 分配表自動分流指引：",
-                color: "#94a3b8",
+                color: "#4f5d68",
                 size: "xs",
                 weight: "bold"
               },
               {
                 type: "text",
                 text: "• 直接在此群組上傳今日「分配表照片」",
-                color: "#cbd5e1",
+                color: "#36434e",
                 size: "xs"
               },
               {
                 type: "text",
                 text: "• 系統將自動辨識醫師人名與科別",
-                color: "#cbd5e1",
+                color: "#36434e",
                 size: "xs"
               },
               {
                 type: "text",
                 text: "• 於每日早上 07:30 自動分流發送至各科室群組",
-                color: "#cbd5e1",
+                color: "#36434e",
                 size: "xs"
               }
             ]
@@ -243,12 +243,12 @@ function getMainMenuFlex(sourceId) {
       footer: {
         type: "box",
         layout: "vertical",
-        backgroundColor: "#1e293b",
+        backgroundColor: "#f6f8f9",
         contents: [
           {
             type: "text",
             text: "設計給臨床同仁的行政貼心工具",
-            color: "#64748b",
+            color: "#66727c",
             size: "xxs",
             align: "center",
             margin: "xs"
@@ -268,7 +268,7 @@ function getOcrSummaryFlex(dispatchedGroups, hasUro, messageId, sourceId, dateWa
       text: "📋 Case 分配表自動分流結果",
       weight: "bold",
       size: "md",
-      color: "#ffffff"
+      color: "#17212b"
     }
   ];
 
@@ -276,7 +276,7 @@ function getOcrSummaryFlex(dispatchedGroups, hasUro, messageId, sourceId, dateWa
     contents.push({
       type: "text",
       text: `⚠️ ${dateWarning}`,
-      color: "#f43f5e",
+      color: "#be123c",
       weight: "bold",
       size: "xs",
       margin: "md",
@@ -288,7 +288,7 @@ function getOcrSummaryFlex(dispatchedGroups, hasUro, messageId, sourceId, dateWa
     contents.push({
       type: "text",
       text: "【已自動排程明早 07:30 轉發】：",
-      color: "#94a3b8",
+      color: "#4f5d68",
       size: "xs",
       margin: "md",
       weight: "bold"
@@ -297,7 +297,7 @@ function getOcrSummaryFlex(dispatchedGroups, hasUro, messageId, sourceId, dateWa
       contents.push({
         type: "text",
         text: `• ${g}`,
-        color: "#cbd5e1",
+        color: "#36434e",
         size: "xs",
         margin: "xs"
       });
@@ -306,7 +306,7 @@ function getOcrSummaryFlex(dispatchedGroups, hasUro, messageId, sourceId, dateWa
     contents.push({
       type: "text",
       text: "【無直接比對到之骨科醫師】",
-      color: "#94a3b8",
+      color: "#4f5d68",
       size: "xs",
       margin: "md"
     });
@@ -315,13 +315,13 @@ function getOcrSummaryFlex(dispatchedGroups, hasUro, messageId, sourceId, dateWa
   if (hasUro) {
     contents.push({
       type: "separator",
-      color: "#334155",
+      color: "#e1e6e9",
       margin: "md"
     });
     contents.push({
       type: "text",
       text: "⚠️ 偵測到今日有 URO (泌尿科) 刀表，請務必點擊下方按鈕審查今日負責人。",
-      color: "#f43f5e",
+      color: "#be123c",
       size: "xs",
       margin: "md",
       wrap: true
@@ -330,7 +330,7 @@ function getOcrSummaryFlex(dispatchedGroups, hasUro, messageId, sourceId, dateWa
     contents.push({
       type: "text",
       text: "所有發送對象已自動比對完成。若發現有錯，可點擊下方按鈕進行手動調整。",
-      color: "#10b981",
+      color: "#047857",
       size: "xs",
       margin: "md",
       wrap: true
@@ -346,7 +346,7 @@ function getOcrSummaryFlex(dispatchedGroups, hasUro, messageId, sourceId, dateWa
       uri: selectUrl
     },
     style: "primary",
-    color: "#0d9488",
+    color: "#0f766e",
     margin: "md",
     height: "sm"
   });
@@ -354,7 +354,7 @@ function getOcrSummaryFlex(dispatchedGroups, hasUro, messageId, sourceId, dateWa
   // Add the cancel button at the bottom of the card
   contents.push({
     type: "separator",
-    color: "#334155",
+    color: "#e1e6e9",
     margin: "md"
   });
   contents.push({
@@ -378,13 +378,13 @@ function getOcrSummaryFlex(dispatchedGroups, hasUro, messageId, sourceId, dateWa
       header: {
         type: "box",
         layout: "vertical",
-        backgroundColor: "#0d9488",
+        backgroundColor: "#e6f4f2",
         paddingAll: "15px",
         contents: [
           {
             type: "text",
             text: "醫院工作助手 - 分流系統",
-            color: "#ffffff",
+            color: "#0f5f58",
             weight: "bold",
             size: "sm"
           }
@@ -393,7 +393,7 @@ function getOcrSummaryFlex(dispatchedGroups, hasUro, messageId, sourceId, dateWa
       body: {
         type: "box",
         layout: "vertical",
-        backgroundColor: "#0f172a",
+        backgroundColor: "#ffffff",
         paddingAll: "20px",
         spacing: "xs",
         contents: contents
@@ -410,19 +410,19 @@ function getAutoNotesAddedFlex(addedNotes, sourceId) {
       text: "✨ AI 已自動新增病房公告",
       weight: "bold",
       size: "md",
-      color: "#ffffff"
+      color: "#17212b"
     },
     {
       type: "text",
       text: "偵測到公告內容，已自動儲存至病房注意事項管理目錄：",
-      color: "#94a3b8",
+      color: "#4f5d68",
       size: "xs",
       margin: "sm",
       wrap: true
     },
     {
       type: "separator",
-      color: "#334155",
+      color: "#e1e6e9",
       margin: "md"
     }
   ];
@@ -437,14 +437,14 @@ function getAutoNotesAddedFlex(addedNotes, sourceId) {
         {
           type: "text",
           text: `📌 類別/標題：${note.title}`,
-          color: "#14b8a6",
+          color: "#0f766e",
           weight: "bold",
           size: "sm"
         },
         {
           type: "text",
           text: note.content,
-          color: "#e2e8f0",
+          color: "#36434e",
           size: "xs",
           wrap: true
         }
@@ -453,7 +453,7 @@ function getAutoNotesAddedFlex(addedNotes, sourceId) {
     if (idx < addedNotes.length - 1) {
       contents.push({
         type: "separator",
-        color: "#1e293b",
+        color: "#eef1f3",
         margin: "md"
       });
     }
@@ -461,7 +461,7 @@ function getAutoNotesAddedFlex(addedNotes, sourceId) {
 
   contents.push({
     type: "separator",
-    color: "#334155",
+    color: "#e1e6e9",
     margin: "md"
   });
 
@@ -473,7 +473,7 @@ function getAutoNotesAddedFlex(addedNotes, sourceId) {
       uri: liffUrl
     },
     style: "primary",
-    color: "#10b981",
+    color: "#047857",
     margin: "md",
     height: "sm"
   });
@@ -487,13 +487,13 @@ function getAutoNotesAddedFlex(addedNotes, sourceId) {
       header: {
         type: "box",
         layout: "vertical",
-        backgroundColor: "#10b981",
+        backgroundColor: "#e5f5ee",
         paddingAll: "15px",
         contents: [
           {
             type: "text",
             text: "醫院工作助手 - 公告系統",
-            color: "#ffffff",
+            color: "#065f46",
             weight: "bold",
             size: "sm"
           }
@@ -502,7 +502,7 @@ function getAutoNotesAddedFlex(addedNotes, sourceId) {
       body: {
         type: "box",
         layout: "vertical",
-        backgroundColor: "#0f172a",
+        backgroundColor: "#ffffff",
         paddingAll: "20px",
         spacing: "xs",
         contents: contents
@@ -519,19 +519,19 @@ function getAutoCalendarAddedFlex(addedEvents, sourceId) {
       text: "📅 AI 已自動新增行程活動",
       weight: "bold",
       size: "md",
-      color: "#ffffff"
+      color: "#17212b"
     },
     {
       type: "text",
       text: "偵測到行事曆排程，已自動儲存至病房行事曆：",
-      color: "#94a3b8",
+      color: "#4f5d68",
       size: "xs",
       margin: "sm",
       wrap: true
     },
     {
       type: "separator",
-      color: "#334155",
+      color: "#e1e6e9",
       margin: "md"
     }
   ];
@@ -549,14 +549,14 @@ function getAutoCalendarAddedFlex(addedEvents, sourceId) {
         {
           type: "text",
           text: `📌 ${evt.date}${timeStr}${locStr}`,
-          color: "#c084fc",
+          color: "#6d28d9",
           weight: "bold",
           size: "xs"
         },
         {
           type: "text",
           text: evt.title,
-          color: "#e2e8f0",
+          color: "#36434e",
           weight: "bold",
           size: "sm",
           wrap: true
@@ -564,7 +564,7 @@ function getAutoCalendarAddedFlex(addedEvents, sourceId) {
         evt.description ? {
           type: "text",
           text: evt.description,
-          color: "#94a3b8",
+          color: "#4f5d68",
           size: "xs",
           wrap: true
         } : null
@@ -573,7 +573,7 @@ function getAutoCalendarAddedFlex(addedEvents, sourceId) {
     if (idx < addedEvents.length - 1) {
       contents.push({
         type: "separator",
-        color: "#1e293b",
+        color: "#eef1f3",
         margin: "md"
       });
     }
@@ -581,7 +581,7 @@ function getAutoCalendarAddedFlex(addedEvents, sourceId) {
 
   contents.push({
     type: "separator",
-    color: "#334155",
+    color: "#e1e6e9",
     margin: "md"
   });
 
@@ -593,7 +593,7 @@ function getAutoCalendarAddedFlex(addedEvents, sourceId) {
       uri: liffUrl
     },
     style: "primary",
-    color: "#a855f7",
+    color: "#6d28d9",
     margin: "md",
     height: "sm"
   });
@@ -607,13 +607,13 @@ function getAutoCalendarAddedFlex(addedEvents, sourceId) {
       header: {
         type: "box",
         layout: "vertical",
-        backgroundColor: "#a855f7",
+        backgroundColor: "#f1ebfd",
         paddingAll: "15px",
         contents: [
           {
             type: "text",
             text: "醫院工作助手 - 行事曆系統",
-            color: "#ffffff",
+            color: "#5b21b6",
             weight: "bold",
             size: "sm"
           }
@@ -622,7 +622,7 @@ function getAutoCalendarAddedFlex(addedEvents, sourceId) {
       body: {
         type: "box",
         layout: "vertical",
-        backgroundColor: "#0f172a",
+        backgroundColor: "#ffffff",
         paddingAll: "20px",
         spacing: "xs",
         contents: contents

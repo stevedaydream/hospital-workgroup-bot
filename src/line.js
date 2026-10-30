@@ -4,15 +4,13 @@ import path from 'path';
 import dotenv from 'dotenv';
 import { db } from './db.js';
 import { analyzeCaseImage, analyzeMultipleImages, primaryProviderLabel, modelLabel, isModelLoaded } from './ai.js';
-import { createJob, updateJob } from './progress.js';
+import { createJob, updateJob, trackModelStage } from './progress.js';
 
 dotenv.config();
 
 // In-memory sessions to debounce and group consecutive image uploads
 const imageGroupSessions = new Map();
 export const GROUP_WINDOW_MS = 10000; // 10-second wait window for consecutive uploads
-// How often the progress page's "loading vs recognizing" stage is refreshed.
-const STAGE_POLL_MS = 3000;
 
 const LINE_CHANNEL_ACCESS_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN;
 const LINE_CHANNEL_SECRET = process.env.LINE_CHANNEL_SECRET;
@@ -651,17 +649,8 @@ async function triggerBatchProcess(sourceId) {
   // out as ONE push, since pushes are billed per group member.
   const { job } = session;
   const resultMessages = [];
-  let currentModel = null;
-  const refreshStage = async () => {
-    if (!currentModel) return;
-    const loaded = await isModelLoaded(currentModel);
-    updateJob(job, { stage: loaded === false ? 'loading' : 'recognizing', model: modelLabel(currentModel) });
-  };
-  const onAttempt = model => {
-    currentModel = model;
-    refreshStage();
-  };
-  const stagePoller = setInterval(refreshStage, STAGE_POLL_MS);
+  const stage = trackModelStage(job, { isModelLoaded, modelLabel });
+  const { onAttempt } = stage;
 
   try {
     updateJob(job, { stage: 'recognizing', imageCount: session.buffers.length });
@@ -674,7 +663,7 @@ async function triggerBatchProcess(sourceId) {
       // Multiple images: Consolidate as ward announcements
       ocrResult = await analyzeMultipleImages(session.buffers, onAttempt);
     }
-    clearInterval(stagePoller);
+    stage.stop();
 
     console.log('Batch Analysis Result:', ocrResult);
 
@@ -802,7 +791,7 @@ async function triggerBatchProcess(sourceId) {
     updateJob(job, { stage: 'done', resultLabel: RESULT_LABELS[ocrResult.type] || '無法辨識' });
     await pushMessage(sourceId, resultMessages);
   } catch (error) {
-    clearInterval(stagePoller);
+    stage.stop();
     console.error('Error processing batch images:', error);
     updateJob(job, { stage: 'failed', error: error.message });
     await pushMessage(sourceId, {

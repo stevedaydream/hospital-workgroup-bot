@@ -41,11 +41,54 @@ export function createJob() {
     imageCount: 1,
     model: null,
     resultLabel: null,
+    // Recognition output for the authenticated caller (roster import); never
+    // part of the public view.
+    result: null,
     error: null,
     finishedAt: null
   };
   jobs.set(job.id, job);
   return job;
+}
+
+export function getJob(id) {
+  return jobs.get(id) || null;
+}
+
+/**
+ * Keeps job.stage at "loading" or "recognizing" while an AI call runs, by
+ * asking whether the model currently being tried is up.
+ * Pass `onAttempt` to the ai.js call and call `stop()` when it settles.
+ */
+export function trackModelStage(job, { isModelLoaded, modelLabel }, pollMs = 3000) {
+  let currentModel = null;
+  let inFlight = false;
+  const refresh = async () => {
+    // The readiness check can outlast the poll interval; never stack them.
+    if (!currentModel || inFlight) return;
+    inFlight = true;
+    const model = currentModel;
+    try {
+      const loaded = await isModelLoaded(model);
+      // A slow answer about a model we have since moved past is stale.
+      if (model === currentModel) {
+        updateJob(job, { stage: loaded === false ? 'loading' : 'recognizing', model: modelLabel(model) });
+      }
+    } finally {
+      inFlight = false;
+    }
+  };
+  const timer = setInterval(refresh, pollMs);
+  return {
+    onAttempt(model) {
+      currentModel = model;
+      updateJob(job, { model: modelLabel(model) });
+      refresh();
+    },
+    stop() {
+      clearInterval(timer);
+    }
+  };
 }
 
 export function updateJob(job, changes) {

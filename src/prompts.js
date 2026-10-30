@@ -62,3 +62,28 @@ export function normalizeMultiResult(parsed) {
     notes: Array.isArray(parsed.notes) ? parsed.notes : []
   };
 }
+
+// Doctor roster import (admin page). Only names and section headers: which
+// LINE group each doctor goes to is decided by a person, never by the model.
+export const ROSTER_PROMPT = `You are reading a photo of a hospital roster: a list or table of doctors grouped under department / section headers (e.g. PS, Ortho, URO, CVS, CS, GS, ENT, OPH, NS).
+Extract every doctor's name exactly as written (Traditional Chinese characters, do not translate or romanise), together with the department header the name appears under.
+Rules:
+- One entry per person; if the same name appears under several departments, keep the first.
+- Skip column headers, ward/bed numbers, phone extensions, dates and shift labels.
+- If a name has no visible department, use null.
+- Department codes keep the spelling shown in the photo (e.g. "Ortho", "URO").
+
+Return a JSON object: {"doctors": [{"name": "陳鍾沛", "department": "Ortho"}, ...]}`;
+
+export function normalizeRosterResult(parsed) {
+  const seen = new Set();
+  const doctors = [];
+  for (const d of Array.isArray(parsed.doctors) ? parsed.doctors : []) {
+    const name = typeof d?.name === 'string' ? d.name.trim() : '';
+    if (!name || seen.has(name)) continue;
+    seen.add(name);
+    const department = typeof d.department === 'string' && d.department.trim() ? d.department.trim() : null;
+    doctors.push({ name, department });
+  }
+  return { doctors };
+}

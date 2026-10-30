@@ -6,7 +6,11 @@ import dotenv from 'dotenv';
 import { db } from './db.js';
 import { requireLiffAuth, requireAdminKey } from './auth.js';
 import { verifySignature, handleWebhookEvent, pushMessage, GROUP_WINDOW_MS } from './line.js';
-import { getJobView } from './progress.js';
+import { getJobView, getJob, createJob, updateJob, trackModelStage } from './progress.js';
+import { analyzeRoster, isModelLoaded, modelLabel } from './ai.js';
+
+// The admin page downsizes photos before upload; this only stops abuse.
+const MAX_ROSTER_IMAGE_BYTES = 8 * 1024 * 1024;
 import { initializeScheduler, runDailyDispatch, runDailyReminders } from './scheduler.js';
 
 dotenv.config();
@@ -272,6 +276,63 @@ app.post('/api/doctor-mappings', async (c) => {
   try {
     const newMap = await db.doctor_group_mapping.create(matchKey, groupName, lineGroupId, type);
     return c.json(newMap);
+  } catch (error) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// Roster import, step 1: read doctor names from a photo. Recognition can take
+// minutes (cold model load) but the Vercel relay cuts requests at 60s, so this
+// starts a job and the admin page polls for the result.
+app.post('/api/doctor-mappings/roster-scan', async (c) => {
+  const { image } = await c.req.json().catch(() => ({}));
+  if (typeof image !== 'string' || !image) {
+    return c.json({ error: 'Missing image' }, 400);
+  }
+  const imageBuffer = Buffer.from(image.replace(/^data:image\/\w+;base64,/, ''), 'base64');
+  if (imageBuffer.length === 0 || imageBuffer.length > MAX_ROSTER_IMAGE_BYTES) {
+    return c.json({ error: 'Image is empty or too large' }, 413);
+  }
+
+  const job = createJob();
+  updateJob(job, { stage: 'recognizing' });
+  const stage = trackModelStage(job, { isModelLoaded, modelLabel });
+  analyzeRoster(imageBuffer, stage.onAttempt)
+    .then(result => {
+      stage.stop();
+      updateJob(job, { stage: 'done', result: { doctors: result.doctors }, resultLabel: `${result.doctors.length} 位醫師` });
+    })
+    .catch(error => {
+      stage.stop();
+      console.error('[Roster] recognition failed:', error.message);
+      updateJob(job, { stage: 'failed', error: error.message });
+    });
+  return c.json({ jobId: job.id });
+});
+
+app.get('/api/doctor-mappings/roster-scan/:id', (c) => {
+  const job = getJob(c.req.param('id'));
+  if (!job) return c.json({ error: 'not_found' }, 404);
+  return c.json({ ...getJobView(job.id, 0), result: job.result });
+});
+
+// Roster import, step 2: write the rows the user reviewed and assigned groups to.
+app.post('/api/doctor-mappings/bulk', async (c) => {
+  const { mappings } = await c.req.json().catch(() => ({}));
+  if (!Array.isArray(mappings) || mappings.length === 0) {
+    return c.json({ error: 'Missing mappings' }, 400);
+  }
+  const rows = mappings.map(m => ({
+    matchKey: String(m.matchKey || '').trim(),
+    groupName: String(m.groupName || '').trim(),
+    lineGroupId: String(m.lineGroupId || '').trim(),
+    type: m.type
+  }));
+  if (rows.some(r => !r.matchKey || !r.groupName || !r.lineGroupId || !['DIRECT', 'FLEXIBLE'].includes(r.type))) {
+    return c.json({ error: 'Every row needs matchKey, groupName, lineGroupId and a valid type' }, 400);
+  }
+  try {
+    return c.json(await db.doctor_group_mapping.createMany(rows));
   } catch (error) {
     return c.json({ error: error.message }, 500);
   }

@@ -129,6 +129,68 @@
     .tag-close:hover {
       color: #f43f5e;
     }
+
+    /* Roster import (photo → review → assign groups) */
+    .roster-panel {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--border-color);
+      padding: 16px;
+      border-radius: 16px;
+      display: grid;
+      gap: 12px;
+    }
+    .roster-hint { font-size: 12px; color: var(--text-secondary); line-height: 1.6; }
+    .roster-status {
+      display: none;
+      font-size: 13px;
+      padding: 10px 12px;
+      border-radius: 12px;
+      background: rgba(13, 148, 136, 0.1);
+      border: 1px solid rgba(20, 184, 166, 0.3);
+      font-variant-numeric: tabular-nums;
+    }
+    .roster-status.show { display: block; }
+    .roster-status.error { background: rgba(244, 63, 94, 0.1); border-color: rgba(244, 63, 94, 0.35); }
+    .roster-toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .roster-toolbar select { flex: 1 1 160px; min-width: 0; }
+    .btn-ghost {
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text-primary);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      padding: 9px 12px;
+      font-size: 12px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .btn-ghost:hover { border-color: rgba(20, 184, 166, 0.4); }
+    .roster-add-group { display: none; gap: 8px; }
+    .roster-add-group.show { display: grid; }
+    .roster-list { display: grid; gap: 8px; max-height: 420px; overflow-y: auto; padding-right: 4px; }
+    .roster-row {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 6px 10px;
+      align-items: center;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid var(--border-color);
+      background: rgba(255, 255, 255, 0.015);
+    }
+    .roster-row.off { opacity: 0.5; }
+    .roster-row input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--color-teal); }
+    .roster-row .name-line { display: flex; gap: 8px; align-items: center; min-width: 0; }
+    .roster-row .name-line input { flex: 1; min-width: 0; padding: 7px 10px; font-size: 13px; }
+    .roster-row select { grid-column: 2; padding: 7px 10px; font-size: 12px; }
+    .dept-badge, .exists-badge {
+      flex: none;
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--border-color);
+      color: var(--text-secondary);
+    }
+    .exists-badge { color: #fbbf24; border-color: rgba(251, 191, 36, 0.4); }
   </style>
 </head>
 <body>
@@ -163,6 +225,47 @@
         <div class="mapping-grid" id="mapping-list">
           <div style="text-align: center; color: var(--text-secondary); padding: 20px;">
             讀取對照資料中...
+          </div>
+        </div>
+      </div>
+
+      <!-- Section: Import doctors from a roster photo -->
+      <div class="admin-section">
+        <div class="section-title">
+          <span>📷</span> 從照片匯入醫師名單
+        </div>
+        <div class="roster-panel">
+          <div class="roster-hint">
+            拍下醫師名單（例如分配表下半部的科別名冊），AI 會讀出姓名與科別；
+            請逐一校正錯字、指定每位醫師要轉發的群組，再一次匯入。
+            辨識需要載入模型時約 3～4 分鐘，可以停在此頁等待。
+          </div>
+          <input type="file" id="roster-file" accept="image/*" hidden onchange="onRosterFile(this)">
+          <button class="btn-primary" id="btn-roster-pick" onclick="document.getElementById('roster-file').click()" style="padding: 12px; font-size: 14px;">
+            選擇或拍攝名單照片
+          </button>
+          <div class="roster-status" id="roster-status" role="status"></div>
+
+          <div id="roster-review" style="display: none; gap: 12px;">
+            <div class="roster-toolbar">
+              <select class="input-field" id="roster-default-group" style="padding: 9px 12px; font-size: 12px;"></select>
+              <button class="btn-ghost" onclick="applyGroupToChecked()">套用到已勾選</button>
+              <button class="btn-ghost" onclick="toggleAddGroup()">＋ 新增群組</button>
+            </div>
+            <div class="roster-add-group" id="roster-add-group">
+              <input type="text" class="input-field" id="roster-new-group-name" placeholder="群組名稱，例如：大樹骨群" style="padding: 9px 12px; font-size: 13px;">
+              <input type="text" class="input-field" id="roster-new-group-id" placeholder="LINE 群組 ID（在群組裡傳「ID」取得）" style="padding: 9px 12px; font-size: 13px;">
+              <button class="btn-ghost" onclick="addRosterGroup()">加入群組選項</button>
+            </div>
+            <div class="roster-toolbar">
+              <button class="btn-ghost" onclick="setAllRoster(true)">全選</button>
+              <button class="btn-ghost" onclick="setAllRoster(false)">全不選</button>
+              <span class="roster-hint" id="roster-count" style="margin-left: auto;"></span>
+            </div>
+            <div class="roster-list" id="roster-list"></div>
+            <button class="btn-primary" id="btn-roster-submit" onclick="submitRoster()" style="padding: 12px; font-size: 14px;">
+              匯入已勾選的醫師
+            </button>
           </div>
         </div>
       </div>
@@ -373,6 +476,7 @@
         const response = await fetch('/api/doctor-mappings');
         if (response.ok) {
           const mappings = await response.json();
+          currentMappings = mappings;
           if (mappings.length === 0) {
             container.innerHTML = '<div style="text-align: center; color: var(--text-secondary); padding: 20px;">目前尚無任何對照設定項目</div>';
             return;
@@ -471,6 +575,239 @@
       } finally {
         btn.disabled = false;
         btn.innerText = '確認新增對照設定';
+      }
+    }
+
+    // ---------------- Roster import ----------------
+    let currentMappings = [];
+    let rosterRows = [];     // [{ name, department, include, groupId }]
+    let extraGroups = [];    // groups typed in on this page: [{ id, name }]
+    let rosterPoll = null;
+
+    // Groups to offer: every group already in the mapping table plus any added here.
+    function rosterGroups() {
+      const byId = new Map();
+      currentMappings.forEach(m => byId.set(m.line_group_id, m.group_name));
+      extraGroups.forEach(g => byId.set(g.id, g.name));
+      return [...byId].map(([id, name]) => ({ id, name }));
+    }
+
+    function groupOptionsHtml(selectedId) {
+      const groups = rosterGroups();
+      const head = `<option value="">${groups.length ? '— 選擇群組 —' : '— 請先新增群組 —'}</option>`;
+      return head + groups.map(g =>
+        `<option value="${escapeHtml(g.id)}" ${g.id === selectedId ? 'selected' : ''}>${escapeHtml(g.name)}</option>`
+      ).join('');
+    }
+
+    function setRosterStatus(text, isError = false) {
+      const el = document.getElementById('roster-status');
+      el.textContent = text;
+      el.className = 'roster-status show' + (isError ? ' error' : '');
+    }
+
+    // Phone photos can be 5MB+; the Vercel relay accepts at most 4.5MB per request.
+    function downscaleImage(file, maxEdge = 2048) {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        const url = URL.createObjectURL(file);
+        img.onload = () => {
+          const scale = Math.min(1, maxEdge / Math.max(img.naturalWidth, img.naturalHeight));
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.round(img.naturalWidth * scale);
+          canvas.height = Math.round(img.naturalHeight * scale);
+          canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+          URL.revokeObjectURL(url);
+          resolve(canvas.toDataURL('image/jpeg', 0.85));
+        };
+        img.onerror = () => {
+          URL.revokeObjectURL(url);
+          reject(new Error('無法讀取這張圖片'));
+        };
+        img.src = url;
+      });
+    }
+
+    function formatClock(seconds) {
+      const s = Math.max(0, Math.round(seconds));
+      return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+    }
+
+    async function onRosterFile(input) {
+      const file = input.files && input.files[0];
+      input.value = '';
+      if (!file) return;
+
+      const pickBtn = document.getElementById('btn-roster-pick');
+      pickBtn.disabled = true;
+      document.getElementById('roster-review').style.display = 'none';
+      clearInterval(rosterPoll);
+
+      try {
+        setRosterStatus('壓縮照片中…');
+        const image = await downscaleImage(file);
+        setRosterStatus('上傳中…');
+        const res = await fetch('/api/doctor-mappings/roster-scan', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ image })
+        });
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`);
+        const { jobId } = await res.json();
+        pollRoster(jobId, pickBtn);
+      } catch (error) {
+        setRosterStatus('❌ ' + error.message, true);
+        pickBtn.disabled = false;
+      }
+    }
+
+    function pollRoster(jobId, pickBtn) {
+      const tick = async () => {
+        try {
+          const res = await fetch(`/api/doctor-mappings/roster-scan/${jobId}`);
+          if (res.status === 404) throw new Error('找不到這次辨識（系統可能已重新啟動），請重新上傳');
+          const job = await res.json();
+          if (job.stage === 'done') {
+            clearInterval(rosterPoll);
+            pickBtn.disabled = false;
+            pickBtn.textContent = '重新拍攝名單';
+            setRosterStatus(`✅ 讀到 ${job.result.doctors.length} 位醫師（${formatClock(job.elapsedSeconds)}，${job.model || 'AI'}）。請校正後指定群組。`);
+            showRosterReview(job.result.doctors);
+          } else if (job.stage === 'failed') {
+            clearInterval(rosterPoll);
+            pickBtn.disabled = false;
+            setRosterStatus('❌ ' + (job.error || '辨識失敗'), true);
+          } else {
+            const model = job.model ? `（${job.model}）` : '';
+            const eta = job.remainingSeconds > 60 ? `，預計還要約 ${Math.ceil(job.remainingSeconds / 60)} 分鐘` : '';
+            setRosterStatus(`⏳ ${job.stageLabel}${model} · ${formatClock(job.elapsedSeconds)}${eta}`);
+          }
+        } catch (error) {
+          clearInterval(rosterPoll);
+          pickBtn.disabled = false;
+          setRosterStatus('❌ ' + error.message, true);
+        }
+      };
+      tick();
+      rosterPoll = setInterval(tick, 2000);
+    }
+
+    function showRosterReview(doctors) {
+      const existing = new Set(currentMappings.map(m => m.match_key));
+      rosterRows = doctors.map(d => ({
+        name: d.name,
+        department: d.department,
+        exists: existing.has(d.name),
+        include: !existing.has(d.name),
+        groupId: ''
+      }));
+      document.getElementById('roster-review').style.display = 'grid';
+      if (!rosterGroups().length) toggleAddGroup(true);
+      renderRoster();
+    }
+
+    function renderRoster() {
+      const defaultSelect = document.getElementById('roster-default-group');
+      defaultSelect.innerHTML = groupOptionsHtml(defaultSelect.value);
+      const list = document.getElementById('roster-list');
+      list.innerHTML = rosterRows.map((r, i) => `
+        <div class="roster-row ${r.include ? '' : 'off'}">
+          <input type="checkbox" ${r.include ? 'checked' : ''} onchange="rosterRows[${i}].include = this.checked; renderRoster()" aria-label="匯入 ${escapeHtml(r.name)}">
+          <div class="name-line">
+            <input type="text" class="input-field" value="${escapeHtml(r.name)}" oninput="rosterRows[${i}].name = this.value.trim()" aria-label="醫師姓名">
+            ${r.department ? `<span class="dept-badge">${escapeHtml(r.department)}</span>` : ''}
+            ${r.exists ? '<span class="exists-badge">已存在</span>' : ''}
+          </div>
+          <select class="input-field" onchange="rosterRows[${i}].groupId = this.value" aria-label="${escapeHtml(r.name)} 的轉發群組">${groupOptionsHtml(r.groupId)}</select>
+        </div>
+      `).join('');
+      const checked = rosterRows.filter(r => r.include).length;
+      document.getElementById('roster-count').textContent = `已勾選 ${checked} / ${rosterRows.length}`;
+      document.getElementById('btn-roster-submit').textContent = `匯入已勾選的 ${checked} 位醫師`;
+    }
+
+    function setAllRoster(include) {
+      rosterRows.forEach(r => { r.include = include; });
+      renderRoster();
+    }
+
+    function applyGroupToChecked() {
+      const groupId = document.getElementById('roster-default-group').value;
+      if (!groupId) {
+        showToast('請先選擇要套用的群組', true);
+        return;
+      }
+      rosterRows.forEach(r => { if (r.include) r.groupId = groupId; });
+      renderRoster();
+    }
+
+    function toggleAddGroup(forceOpen) {
+      const box = document.getElementById('roster-add-group');
+      box.classList.toggle('show', forceOpen === true ? true : !box.classList.contains('show'));
+      // Opened from inside a group chat: offer that group's ID.
+      const idInput = document.getElementById('roster-new-group-id');
+      try {
+        const ctx = liff.getContext();
+        if (!idInput.value && ctx && ctx.groupId) idInput.value = ctx.groupId;
+      } catch (e) { /* not in LIFF */ }
+    }
+
+    function addRosterGroup() {
+      const name = document.getElementById('roster-new-group-name').value.trim();
+      const id = document.getElementById('roster-new-group-id').value.trim();
+      if (!name || !id) {
+        showToast('請填寫群組名稱與群組 ID', true);
+        return;
+      }
+      extraGroups.push({ id, name });
+      document.getElementById('roster-new-group-name').value = '';
+      document.getElementById('roster-new-group-id').value = '';
+      document.getElementById('roster-add-group').classList.remove('show');
+      renderRoster();
+      document.getElementById('roster-default-group').value = id;
+      showToast(`已加入群組選項：${name}`);
+    }
+
+    async function submitRoster() {
+      const chosen = rosterRows.filter(r => r.include);
+      if (!chosen.length) {
+        showToast('沒有勾選任何醫師', true);
+        return;
+      }
+      if (chosen.some(r => !r.name)) {
+        showToast('有勾選的醫師姓名是空白的', true);
+        return;
+      }
+      const missing = chosen.filter(r => !r.groupId).map(r => r.name);
+      if (missing.length) {
+        showToast(`還沒指定群組：${missing.slice(0, 3).join('、')}${missing.length > 3 ? ' 等' : ''}`, true);
+        return;
+      }
+
+      const groups = new Map(rosterGroups().map(g => [g.id, g.name]));
+      const btn = document.getElementById('btn-roster-submit');
+      btn.disabled = true;
+      btn.textContent = '匯入中…';
+      try {
+        const res = await fetch('/api/doctor-mappings/bulk', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            // A doctor's name maps straight to their group (DIRECT); department
+            // codes such as URO are FLEXIBLE and stay a manual entry below.
+            mappings: chosen.map(r => ({ matchKey: r.name, groupName: groups.get(r.groupId), lineGroupId: r.groupId, type: 'DIRECT' }))
+          })
+        });
+        const result = await res.json();
+        if (!res.ok) throw new Error(result.error || `HTTP ${res.status}`);
+        showToast(`匯入完成：新增 ${result.created} 筆${result.skipped ? `，略過重複 ${result.skipped} 筆` : ''}`);
+        await loadMappings();
+        showRosterReview(rosterRows.map(r => ({ name: r.name, department: r.department })));
+      } catch (error) {
+        showToast('匯入失敗：' + error.message, true);
+      } finally {
+        btn.disabled = false;
+        renderRoster();
       }
     }
 

@@ -92,8 +92,10 @@ function linkHelp() {
 /**
  * Handles MedBase commands. Returns the reply message, or null when `text`
  * is not a MedBase command (the caller then tries its own commands).
+ * `on(feature)` tells whether a feature switch is on for this chat; a command
+ * whose feature is off gets no reply at all.
  */
-export async function medbaseCommand(text, source) {
+export async function medbaseCommand(text, source, on = () => true) {
   if (!medbaseEnabled) return null;
   const userId = source.userId;
 
@@ -117,6 +119,7 @@ export async function medbaseCommand(text, source) {
   }
 
   if (/^(我的班|我的班表|我的值班)$/.test(text)) {
+    if (!on('my_schedule')) return { silent: true };
     const me = userId && db.medbase_links.get(userId);
     if (!me) return { type: 'text', text: linkHelp() };
     let message;
@@ -142,6 +145,7 @@ export async function medbaseCommand(text, source) {
   // The duty table is hospital-wide, so it needs neither a linked account nor a group setting.
   const duty = DUTY_COMMANDS.find(c => c.re.test(text));
   if (duty) {
+    if (!on('duty')) return { silent: true };
     try {
       return { type: 'text', text: await dutyText(duty.offsets) };
     } catch (error) {

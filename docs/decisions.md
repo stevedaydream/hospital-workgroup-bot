@@ -47,6 +47,7 @@
 - **經 Port Monitor 拉起模型（2026-10）**：bot 設了 Port Monitor 專案金鑰時先走 43922，由 Port Monitor 依優先順序拉起 Strata，放不下就改要 Qwen3.6；Port Monitor 沒開時退回 gateway（只用執行中的模型）。做法比照 LiveCatch ADR-007。
 - **對外入口改 Vercel 中繼（2026-10）**：LINE 直連 Funnel 約 1/6 TLS 握手失敗、重送要等數分鐘。改由 Vercel（`relay/`，東京）接 LINE 再轉 Funnel，連測 30 次全成功。未選 Supabase Edge Function：預設網域會把 HTML 改成純文字（LIFF 壞掉）且網址有 `/functions/v1` 前綴。
 - **MedBase 排班串接（2026-10）**：bot 只呼叫 MedBase 新增的唯讀 `/api/bot`（Bearer 金鑰），不改 GAS；綁定改由 MedBase 手機版發 10 分鐘簽章綁定碼，bot 不經手 HIS 密碼。查詢一律用回覆（免費），推播只用於換班私訊與管理頁逐群組開啟的提醒／發布通知，因 LINE 推播依群組人數計費、免費方案每月 200 則。
+- **群組功能開關（2026-10）**：`group_features` 逐群組存每項功能開關，未設定的群組沿用 `*` 預設列，再沿用 `src/features.js` 的 `defaultOn`。新功能以 `defaultOn: false` 上線、只在測試群組打開，即可在正式 bot 上開發而不影響其他群組；1 對 1 私訊不受開關限制，「ID」指令永遠可用。
 - **P2 原計畫（未開始）**：llama.cpp + Gemma 4 E4B + mmproj、provider 抽象、GBNF、map-reduce、fallback、輕量驗證。
 - **P3 未開始**：`doctors` 主檔與匯入入口、檔案直解、確認卡片。
 - **P4（新增，待排）**：Rich Menu 與 LIFF 介面改版。

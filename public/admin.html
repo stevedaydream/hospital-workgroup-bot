@@ -311,6 +311,20 @@
         </div>
       </div>
 
+      <!-- Section: feature switches per group -->
+      <div class="admin-section">
+        <div class="section-title">
+          <span>🎛️</span> 群組功能開關
+        </div>
+        <div class="roster-panel">
+          <div class="roster-hint">
+            每個群組可個別開關功能，關閉的功能在該群組不回應、選單也不顯示（1 對 1 私訊不受影響）。
+            未個別設定的群組沿用「預設」。開發中的新功能預設關閉，只在測試群組打開即可試用。
+          </div>
+          <div id="group-features" style="display: grid; gap: 10px;"></div>
+        </div>
+      </div>
+
       <!-- Section: MedBase integration -->
       <div class="admin-section">
         <div class="section-title">
@@ -519,6 +533,7 @@
         }
         
         await loadLineGroups();
+        await loadGroupFeatures();
         await loadMappings();
         await loadMedbase();
         await loadUsers();
@@ -527,6 +542,7 @@
         console.error('LIFF initialization failed', err);
         document.getElementById('meta-info').innerText = '管理端連線正常';
         await loadLineGroups();
+        await loadGroupFeatures();
         await loadMappings();
         await loadMedbase();
         await loadUsers();
@@ -928,6 +944,87 @@
       const res = await fetch(`/api/line-groups/${encodeURIComponent(lineGroupId)}`, { method: 'DELETE' });
       if (!res.ok) return showToast('刪除失敗', true);
       await loadLineGroups();
+    }
+
+    // ---------------- Feature switches per group ----------------
+    let featureState = { features: [], defaults: null, groups: [] };
+
+    async function loadGroupFeatures() {
+      const container = document.getElementById('group-features');
+      try {
+        const res = await fetch('/api/group-features');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        featureState = await res.json();
+      } catch (error) {
+        container.innerHTML = `<div class="roster-hint">無法讀取功能開關：${escapeHtml(error.message)}</div>`;
+        return;
+      }
+      const { defaults, groups } = featureState;
+      const active = groups.filter(g => !g.left_at);
+      container.innerHTML = featureCard('*', '預設（未個別設定的群組）', defaults) +
+        active.map(g => featureCard(g.line_group_id, g.group_name || '未命名群組', g)).join('');
+    }
+
+    function featureCard(lineGroupId, name, state) {
+      const id = escapeHtml(lineGroupId);
+      const isDefault = lineGroupId === '*';
+      const when = state.updated_at
+        ? `${new Date(state.updated_at).toLocaleString('zh-TW', { hour12: false })} · ${escapeHtml(state.updated_by || '')}`
+        : '';
+      const status = isDefault
+        ? (when ? `最後修改 ${when}` : '尚未修改')
+        : (state.customized ? `個別設定 · ${when}` : '沿用預設');
+      const offCount = featureState.features.filter(f => !state.features[f.key]).length;
+      return `
+        <details class="mb-card" data-feature-group="${id}">
+          <summary class="mb-head" style="cursor: pointer;">
+            <b>${escapeHtml(name)}</b>
+            ${isDefault ? '' : `<span class="mb-meta">${id}</span>`}
+            <span class="mb-cost" style="margin-left: auto;">${offCount ? `${offCount} 項關閉` : '全部開啟'}</span>
+          </summary>
+          ${featureState.features.map(f => `
+            <div class="mb-line">
+              <label title="${escapeHtml(f.hint)}">
+                <input type="checkbox" data-feature="${escapeHtml(f.key)}" ${state.features[f.key] ? 'checked' : ''}>
+                ${escapeHtml(f.label)}${f.defaultOn ? '' : ' <span class="mb-cost warn">開發中</span>'}
+              </label>
+              <span class="mb-meta">${escapeHtml(f.hint)}</span>
+            </div>`).join('')}
+          <div class="mb-line">
+            <span class="mb-cost">${status}</span>
+            <span style="margin-left: auto; display: flex; gap: 6px;">
+              <button class="btn-ghost" onclick="saveGroupFeatures('${id}')">儲存</button>
+              ${!isDefault && state.customized ? `<button class="btn-ghost" onclick="resetGroupFeatures('${id}')">改回沿用預設</button>` : ''}
+            </span>
+          </div>
+        </details>`;
+    }
+
+    async function saveGroupFeatures(lineGroupId) {
+      const card = document.querySelector(`[data-feature-group="${CSS.escape(lineGroupId)}"]`);
+      const features = {};
+      card.querySelectorAll('input[data-feature]').forEach(input => { features[input.dataset.feature] = input.checked; });
+      try {
+        const res = await fetch(`/api/group-features/${encodeURIComponent(lineGroupId)}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ features })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+        showToast('功能開關已儲存');
+        await loadGroupFeatures();
+      } catch (error) {
+        showToast('儲存失敗：' + error.message, true);
+      }
+    }
+
+    async function resetGroupFeatures(lineGroupId) {
+      if (!confirm('清除此群組的個別設定，改回沿用預設？')) return;
+      const res = await fetch(`/api/group-features/${encodeURIComponent(lineGroupId)}`, { method: 'DELETE' });
+      if (!res.ok) return showToast('重設失敗', true);
+      showToast('已改回沿用預設');
+      await loadGroupFeatures();
     }
 
     async function loadMedbase() {

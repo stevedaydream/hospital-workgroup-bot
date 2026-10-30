@@ -67,6 +67,7 @@ cd relay
 npx vercel deploy --prod --scope steves-projects-37bb3607
 ```
 
+- Vercel 專案 `relay` 連著這個 GitHub repo，推送 `master` 會自動部署，**Root Directory 必須是 `relay`**。2026-10-30 曾因根目錄是 repo 根，推送後部署成靜態網站，webhook 全部 404；已改正。出事時用 `vercel promote <上一個正常部署網址>` 立刻切回。
 - Funnel 仍要開著：Vercel 是透過它連進這台電腦。
 - Vercel Hobby 方案限非商業用途。
 

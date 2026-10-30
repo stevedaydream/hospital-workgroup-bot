@@ -86,7 +86,29 @@ sqlite.exec(`
     source_group_id  TEXT UNIQUE NOT NULL
   );
 
+  /* MedBase 排班系統串接：LINE 帳號 ↔ HIS 帳號（綁定碼兌換而來） */
+  CREATE TABLE IF NOT EXISTS medbase_links (
+    line_user_id   TEXT PRIMARY KEY,
+    his            TEXT NOT NULL,
+    name           TEXT NOT NULL,
+    medbase_group  TEXT NOT NULL,
+    linked_at      TEXT NOT NULL
+  );
+
+  /* 每個 LINE 群組對應的 MedBase 排班群組與通知設定 */
+  CREATE TABLE IF NOT EXISTS medbase_groups (
+    line_group_id    TEXT PRIMARY KEY,
+    group_name       TEXT NOT NULL DEFAULT '',
+    medbase_group    TEXT NOT NULL,
+    remind_enabled   INTEGER NOT NULL DEFAULT 0,
+    remind_time      TEXT NOT NULL DEFAULT '20:00',
+    notify_publish   INTEGER NOT NULL DEFAULT 0,
+    last_reminded    TEXT,
+    last_versions    TEXT NOT NULL DEFAULT '{}'
+  );
+
   CREATE INDEX IF NOT EXISTS idx_dispatch_date ON daily_dispatch_cache (dispatch_date);
+  CREATE INDEX IF NOT EXISTS idx_medbase_links_his ON medbase_links (his);
   CREATE INDEX IF NOT EXISTS idx_events_group  ON group_events (source_group_id, date);
 `);
 
@@ -100,6 +122,14 @@ console.log(`Database: SQLite ready at ${DB_PATH}`);
 // ----------------------------------------------------
 // Helpers
 // ----------------------------------------------------
+const parseJsonObject = (row, column) => {
+  try {
+    return { ...row, [column]: JSON.parse(row[column] || '{}') };
+  } catch {
+    return { ...row, [column]: {} };
+  }
+};
+
 const parseJsonColumns = (row, columns) => {
   if (!row) return row;
   const out = { ...row };
@@ -326,6 +356,69 @@ export const db = {
   },
 
   // --- Rotations API ---
+  // --- MedBase integration ---
+  medbase_links: {
+    get(lineUserId) {
+      return sqlite.prepare('SELECT * FROM medbase_links WHERE line_user_id = ?').get(lineUserId) || null;
+    },
+
+    /** One HIS account may be linked from several LINE accounts (e.g. a new phone). */
+    getByHis(his) {
+      return sqlite.prepare('SELECT * FROM medbase_links WHERE his = ?').all(his);
+    },
+
+    upsert(lineUserId, { his, name, group }) {
+      sqlite
+        .prepare(`INSERT INTO medbase_links (line_user_id, his, name, medbase_group, linked_at)
+                  VALUES (?, ?, ?, ?, ?)
+                  ON CONFLICT(line_user_id) DO UPDATE SET
+                    his = excluded.his, name = excluded.name,
+                    medbase_group = excluded.medbase_group, linked_at = excluded.linked_at`)
+        .run(lineUserId, his, name, group, new Date().toISOString());
+      return this.get(lineUserId);
+    },
+
+    remove(lineUserId) {
+      return sqlite.prepare('DELETE FROM medbase_links WHERE line_user_id = ?').run(lineUserId).changes > 0;
+    }
+  },
+
+  medbase_groups: {
+    getAll() {
+      return sqlite.prepare('SELECT * FROM medbase_groups ORDER BY group_name').all()
+        .map(row => parseJsonObject(row, 'last_versions'));
+    },
+
+    get(lineGroupId) {
+      const row = sqlite.prepare('SELECT * FROM medbase_groups WHERE line_group_id = ?').get(lineGroupId);
+      return row ? parseJsonObject(row, 'last_versions') : null;
+    },
+
+    upsert(lineGroupId, { groupName, medbaseGroup, remindEnabled, remindTime, notifyPublish }) {
+      sqlite
+        .prepare(`INSERT INTO medbase_groups (line_group_id, group_name, medbase_group, remind_enabled, remind_time, notify_publish)
+                  VALUES (?, ?, ?, ?, ?, ?)
+                  ON CONFLICT(line_group_id) DO UPDATE SET
+                    group_name = excluded.group_name, medbase_group = excluded.medbase_group,
+                    remind_enabled = excluded.remind_enabled, remind_time = excluded.remind_time,
+                    notify_publish = excluded.notify_publish`)
+        .run(lineGroupId, groupName, medbaseGroup, remindEnabled ? 1 : 0, remindTime, notifyPublish ? 1 : 0);
+      return this.get(lineGroupId);
+    },
+
+    remove(lineGroupId) {
+      return sqlite.prepare('DELETE FROM medbase_groups WHERE line_group_id = ?').run(lineGroupId).changes > 0;
+    },
+
+    markReminded(lineGroupId, date) {
+      sqlite.prepare('UPDATE medbase_groups SET last_reminded = ? WHERE line_group_id = ?').run(date, lineGroupId);
+    },
+
+    setVersions(lineGroupId, versions) {
+      sqlite.prepare('UPDATE medbase_groups SET last_versions = ? WHERE line_group_id = ?').run(JSON.stringify(versions), lineGroupId);
+    }
+  },
+
   rotations: {
     async get(groupId) {
       const row = sqlite

@@ -182,6 +182,26 @@
       background: var(--surface);
     }
     .roster-row.off { opacity: 0.55; }
+
+    /* MedBase integration cards */
+    .mb-card {
+      display: grid;
+      gap: 8px;
+      padding: 12px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: var(--surface);
+      font-size: 13px;
+    }
+    .mb-card .mb-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+    .mb-card .mb-head b { font-size: 14px; }
+    .mb-card .mb-meta { font-size: 11px; color: var(--ink-2); }
+    .mb-card .mb-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .mb-card label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+    .mb-card input[type="checkbox"] { width: 17px; height: 17px; accent-color: var(--teal); }
+    .mb-card input[type="time"], .mb-card input[type="text"] { padding: 6px 8px; font-size: 12px; width: auto; }
+    .mb-cost { font-size: 12px; color: var(--ink-2); }
+    .mb-cost.warn { color: var(--amber); font-weight: 600; }
     .roster-row input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--teal); }
     .roster-row .name-line { display: flex; gap: 8px; align-items: center; min-width: 0; }
     .roster-row .name-line input { flex: 1; min-width: 0; padding: 7px 10px; font-size: 13px; }
@@ -276,6 +296,26 @@
             <button class="btn-primary" id="btn-roster-submit" onclick="submitRoster()" style="padding: 12px; font-size: 14px;">
               匯入已勾選的醫師
             </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Section: MedBase integration -->
+      <div class="admin-section">
+        <div class="section-title">
+          <span>🔗</span> MedBase 串接
+        </div>
+        <div class="roster-panel">
+          <div class="roster-hint" id="medbase-summary">讀取中…</div>
+          <div id="medbase-groups" style="display: grid; gap: 10px;"></div>
+          <div class="roster-toolbar">
+            <select class="input-field" id="medbase-new-group" style="padding: 9px 12px; font-size: 12px;"></select>
+            <input type="text" class="input-field" id="medbase-new-code" value="9A9B" placeholder="MedBase 群組代碼" aria-label="MedBase 群組代碼" style="flex: 0 1 110px; padding: 9px 12px; font-size: 12px;">
+            <button class="btn-ghost" onclick="addMedbaseGroup()">加入群組</button>
+          </div>
+          <div class="roster-hint">
+            群組內可輸入「今天值班」「明天值班」查詢（回覆不計推播額度）。
+            「每日提醒」與「發布通知」是推播，<b>每次依群組人數計算</b>，請留意下方預估。
           </div>
         </div>
       </div>
@@ -468,12 +508,14 @@
         }
         
         await loadMappings();
+        await loadMedbase();
         await loadUsers();
         await loadRotations();
       } catch (err) {
         console.error('LIFF initialization failed', err);
         document.getElementById('meta-info').innerText = '管理端連線正常';
         await loadMappings();
+        await loadMedbase();
         await loadUsers();
         await loadRotations();
       }
@@ -818,6 +860,137 @@
       } finally {
         btn.disabled = false;
         renderRoster();
+      }
+    }
+
+    // ---------------- MedBase integration ----------------
+    let medbaseState = { enabled: false, groups: [], quota: {} };
+    // Rough monthly push counts: a daily reminder is ~30 pushes, publish notices ~2.
+    const REMINDERS_PER_MONTH = 30;
+    const PUBLISHES_PER_MONTH = 2;
+
+    async function loadMedbase() {
+      try {
+        const res = await fetch('/api/medbase/groups');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        medbaseState = await res.json();
+      } catch (error) {
+        document.getElementById('medbase-summary').textContent = '無法讀取 MedBase 設定：' + error.message;
+        return;
+      }
+      renderMedbase();
+    }
+
+    function monthlyCost(g) {
+      if (g.member_count == null) return null;
+      return g.member_count * ((g.remind_enabled ? REMINDERS_PER_MONTH : 0) + (g.notify_publish ? PUBLISHES_PER_MONTH : 0));
+    }
+
+    function renderMedbase() {
+      const { enabled, groups, quota } = medbaseState;
+      const quotaText = quota.limit != null && quota.used != null
+        ? `本月推播額度已用 ${quota.used} / ${quota.limit} 則。`
+        : '';
+      const totalCost = groups.reduce((sum, g) => sum + (monthlyCost(g) || 0), 0);
+      document.getElementById('medbase-summary').innerHTML = enabled
+        ? `${escapeHtml(quotaText)} 目前設定預估每月推播約 <b>${totalCost}</b> 則${quota.limit != null && totalCost > quota.limit ? '（<span style="color: var(--rose)">超過額度</span>）' : ''}。`
+        : '⚠️ 伺服器尚未設定 MEDBASE_API_KEY，串接功能停用中。';
+
+      document.getElementById('medbase-groups').innerHTML = groups.length ? groups.map(g => {
+        const cost = monthlyCost(g);
+        const costText = cost == null ? '無法取得群組人數' : `${g.member_count} 人 · 預估每月推播約 ${cost} 則`;
+        const warn = cost != null && quota.limit != null && cost > quota.limit / 2;
+        const id = escapeHtml(g.line_group_id);
+        return `
+          <div class="mb-card" data-id="${id}">
+            <div class="mb-head">
+              <b>${escapeHtml(g.group_name || '未命名群組')}</b>
+              <span class="mb-meta">${id}</span>
+            </div>
+            <div class="mb-line">
+              MedBase 群組
+              <input type="text" class="input-field mb-code" value="${escapeHtml(g.medbase_group)}" aria-label="MedBase 群組代碼" style="max-width: 100px;">
+            </div>
+            <div class="mb-line">
+              <label><input type="checkbox" class="mb-remind" ${g.remind_enabled ? 'checked' : ''}> 每日提醒明日值班</label>
+              <input type="time" class="input-field mb-time" value="${escapeHtml(g.remind_time)}" aria-label="提醒時間">
+            </div>
+            <div class="mb-line">
+              <label><input type="checkbox" class="mb-publish" ${g.notify_publish ? 'checked' : ''}> 班表發布／更新時通知</label>
+            </div>
+            <div class="mb-line">
+              <span class="mb-cost ${warn ? 'warn' : ''}">${costText}</span>
+              <span style="margin-left: auto; display: flex; gap: 6px;">
+                <button class="btn-ghost" onclick="saveMedbaseGroup('${id}')">儲存</button>
+                <button class="btn-ghost" onclick="deleteMedbaseGroup('${id}')">移除</button>
+              </span>
+            </div>
+          </div>`;
+      }).join('') : '<div class="roster-hint">尚未設定任何群組。</div>';
+
+      // Offer LINE groups already known from the mapping table that are not set up yet.
+      const configured = new Set(groups.map(g => g.line_group_id));
+      const candidates = rosterGroups().filter(g => !configured.has(g.id));
+      document.getElementById('medbase-new-group').innerHTML =
+        '<option value="">— 選擇 LINE 群組 —</option>' +
+        candidates.map(g => `<option value="${escapeHtml(g.id)}">${escapeHtml(g.name)}</option>`).join('');
+    }
+
+    async function putMedbaseGroup(lineGroupId, body) {
+      const res = await fetch(`/api/medbase/groups/${encodeURIComponent(lineGroupId)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      return data;
+    }
+
+    async function saveMedbaseGroup(lineGroupId) {
+      const card = document.querySelector(`.mb-card[data-id="${CSS.escape(lineGroupId)}"]`);
+      const current = medbaseState.groups.find(g => g.line_group_id === lineGroupId);
+      try {
+        await putMedbaseGroup(lineGroupId, {
+          groupName: current?.group_name || '',
+          medbaseGroup: card.querySelector('.mb-code').value.trim(),
+          remindEnabled: card.querySelector('.mb-remind').checked,
+          remindTime: card.querySelector('.mb-time').value,
+          notifyPublish: card.querySelector('.mb-publish').checked
+        });
+        showToast('MedBase 設定已儲存');
+        await loadMedbase();
+      } catch (error) {
+        showToast('儲存失敗：' + error.message, true);
+      }
+    }
+
+    async function addMedbaseGroup() {
+      const lineGroupId = document.getElementById('medbase-new-group').value;
+      const medbaseGroup = document.getElementById('medbase-new-code').value.trim();
+      if (!lineGroupId) {
+        showToast('請先選擇 LINE 群組（群組需先出現在對照表或名單匯入中）', true);
+        return;
+      }
+      const group = rosterGroups().find(g => g.id === lineGroupId);
+      try {
+        // New groups start with every push turned off; the admin opts in knowingly.
+        await putMedbaseGroup(lineGroupId, { groupName: group?.name || '', medbaseGroup, remindEnabled: false, remindTime: '20:00', notifyPublish: false });
+        showToast('已加入，可在卡片中開啟提醒與通知');
+        await loadMedbase();
+      } catch (error) {
+        showToast('加入失敗：' + error.message, true);
+      }
+    }
+
+    async function deleteMedbaseGroup(lineGroupId) {
+      if (!confirm('移除此群組的 MedBase 設定？群組內將無法查詢值班，也不再收到提醒與通知。')) return;
+      try {
+        await fetch(`/api/medbase/groups/${encodeURIComponent(lineGroupId)}`, { method: 'DELETE' });
+        showToast('已移除');
+        await loadMedbase();
+      } catch (error) {
+        showToast('移除失敗：' + error.message, true);
       }
     }
 

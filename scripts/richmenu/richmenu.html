@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<!-- Rendered to richmenu.png (2500×843) by scripts/setup-richmenu.mjs via headless Edge. -->
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 2500px; height: 843px; overflow: hidden; }
+  body {
+    font-family: 'Noto Sans TC', 'Microsoft JhengHei', sans-serif;
+    background: #f2f4f5;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: repeat(2, 1fr);
+    gap: 6px;
+    padding: 6px;
+  }
+  .cell {
+    background: #ffffff;
+    border-radius: 28px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 22px;
+    color: #17212b;
+  }
+  .icon {
+    width: 132px;
+    height: 132px;
+    border-radius: 36px;
+    display: grid;
+    place-items: center;
+    font-size: 76px;
+    line-height: 1;
+  }
+  .label { font-size: 66px; font-weight: 700; letter-spacing: 0.04em; }
+  .sub { font-size: 36px; color: #5b6772; margin-top: -10px; }
+  .teal   .icon { background: #e6f4f2; }
+  .violet .icon { background: #f1ebfd; }
+  .amber  .icon { background: #fdf3e2; }
+  .blue   .icon { background: #e6f2fa; }
+  .rose   .icon { background: #fdecef; }
+  .slate  .icon { background: #eef2f3; }
+</style>
+</head>
+<body>
+  <div class="cell teal"><div class="icon">🗓</div><div class="label">我的班</div><div class="sub">接下來 7 天</div></div>
+  <div class="cell violet"><div class="icon">👥</div><div class="label">明天值班</div><div class="sub">誰上什麼班</div></div>
+  <div class="cell amber"><div class="icon">📅</div><div class="label">今天值班</div><div class="sub">今日班表</div></div>
+  <div class="cell blue"><div class="icon">📱</div><div class="label">MedBase</div><div class="sub">完整班表・換班</div></div>
+  <div class="cell rose"><div class="icon">📝</div><div class="label">注意事項</div><div class="sub">共同編輯</div></div>
+  <div class="cell slate"><div class="icon">☰</div><div class="label">功能選單</div><div class="sub">所有功能</div></div>
+</body>
+</html>

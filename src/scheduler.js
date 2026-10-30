@@ -3,6 +3,7 @@ import dotenv from 'dotenv';
 import { db } from './db.js';
 import { pushMessage } from './line.js';
 import { todayInTaipei, daysBetween, dayOfWeek } from './util/date.js';
+import { medbaseEnabled, sendDueReminders, checkPublished } from './medbase.js';
 
 dotenv.config();
 
@@ -196,4 +197,11 @@ export function initializeScheduler() {
     { timezone: 'Asia/Taipei' }
   );
   console.log('[Cron] Scheduler armed: every day at 07:30 Asia/Taipei.');
+
+  if (medbaseEnabled) {
+    // Opt-in per group (admin page). Each group is pushed at most once a day.
+    cron.schedule('* * * * *', () => sendDueReminders(pushMessage).catch(e => console.error('[MedBase] reminders:', e.message)), { timezone: 'Asia/Taipei' });
+    cron.schedule('*/10 * * * *', () => checkPublished(pushMessage).catch(e => console.error('[MedBase] publish check:', e.message)), { timezone: 'Asia/Taipei' });
+    console.log('[Cron] MedBase duty reminders (every minute) and publish checks (every 10 min) armed.');
+  }
 }

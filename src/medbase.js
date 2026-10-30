@@ -46,20 +46,25 @@ const shortDate = date => `${Number(date.slice(5, 7))}/${Number(date.slice(8, 10
 // src/shared/duty.ts: NP per ward with 白八/夜八, VS shows 總值 only.
 const NP_WARDS = ['9A', '9B', '8A'];
 const VS_PRIMARY = '總值';
-const SHIFT_LABELS = { 白八: '白', 夜八: '夜' };
+const SHIFT_LABELS = { 白八: '白🌞', 夜八: '夜🌜' };
 
-/** One day of duty: a line per NP ward ("白 甲 62855｜夜 乙") and the VS on call. */
+/** One day of duty: each NP ward on its own line with a line per shift, then the VS on call. */
 async function dutyBlock(date, label) {
   const { items } = await callMedbase('duty', { date });
   const head = `【${label} ${shortDate(date)}】`;
   if (!items.length) return `${head}\n尚無值班資料`;
-  const person = r => `${SHIFT_LABELS[r.shift] ?? r.shift} ${r.name}${r.extension ? ` ${r.extension}` : ''}`.trim();
-  const lines = NP_WARDS.map(ward => {
+  const ext = r => (r.extension ? ` ${r.extension}` : '');
+  const lines = [];
+  for (const ward of NP_WARDS) {
     const rows = items.filter(r => r.ward === ward);
-    return `${ward}　${rows.length ? rows.map(person).join('｜') : '未排'}`;
-  });
+    lines.push(`${ward}　`);
+    if (!rows.length) lines.push('未排');
+    for (const r of rows) lines.push(`${SHIFT_LABELS[r.shift] ?? r.shift} ${r.name}${ext(r)}`.trim());
+  }
   const vs = items.filter(r => r.ward === VS_PRIMARY);
-  lines.push(`VS ${VS_PRIMARY}　${vs.length ? vs.map(r => `${r.name}${r.extension ? ` ${r.extension}` : ''}`).join('、') : '未排'}`);
+  lines.push(`VS ${VS_PRIMARY}🙏`);
+  if (!vs.length) lines.push('未排');
+  for (const r of vs) lines.push(`${r.name}${r.his ? `（${r.his}）` : ''}${ext(r)}`);
   return `${head}\n${lines.join('\n')}`;
 }
 

@@ -900,17 +900,24 @@ export async function handleWebhookEvent(event) {
   console.log(`[Webhook Event] ${new Date().toISOString()} type: ${event.type}, delay: ${delayMs}ms${redelivery}, source: ${JSON.stringify(event.source)}`);
 
   if (event.type === 'join') {
-    // Reply with main menu on group join
+    // Keep the join quiet: just the group ID, with quick replies; the full menu comes on 「選單」
     const sourceId = event.source.groupId || event.source.roomId || event.source.userId;
     console.log(`[Webhook Join] Joined group/room/user ID: ${sourceId}`);
-    
-    await replyMessage(event.replyToken, [
-      {
-        type: "text",
-        text: `大家好！我是「醫院工作群組優化助手」🤖。我已經加入此群組，本群組的 LINE ID 為：\n${sourceId}\n\n我將協助各位進行排程提醒、注意事項筆記共同編輯，以及 Case 分配表的每日自動分流轉發！`
-      },
-      getMainMenuFlex(sourceId)
-    ]);
+
+    const quickItem = (label, text) => ({ type: "action", action: { type: "message", label, text } });
+    await replyMessage(event.replyToken, {
+      type: "text",
+      text: `本群組的 LINE ID：\n${sourceId}\n\n輸入「選單」可開啟主選單。`,
+      quickReply: {
+        items: [
+          quickItem("📋 近期值班", "近期值班"),
+          quickItem("🗓 我的班", "我的班"),
+          quickItem("📅 今日行程", "今日行程"),
+          quickItem("✈️ 出國/長假", "出國"),
+          quickItem("📖 選單", "選單")
+        ]
+      }
+    });
     return;
   }
 

@@ -8,12 +8,16 @@ import { requireLiffAuth, requireAdminKey } from './auth.js';
 import { verifySignature, handleWebhookEvent, pushMessage, GROUP_WINDOW_MS } from './line.js';
 import { getJobView, getJob, createJob, updateJob, trackModelStage } from './progress.js';
 import { analyzeRoster, isModelLoaded, modelLabel } from './ai.js';
+import { initializeScheduler, runDailyDispatch, runDailyReminders } from './scheduler.js';
+import { medbaseEnabled, verifyNotifySignature, deliverNotice, DEFAULT_MEDBASE_GROUP } from './medbase.js';
+import { getGroupMemberCount, getPushQuota } from './line.js';
+
+dotenv.config();
 
 // The admin page downsizes photos before upload; this only stops abuse.
 const MAX_ROSTER_IMAGE_BYTES = 8 * 1024 * 1024;
-import { initializeScheduler, runDailyDispatch, runDailyReminders } from './scheduler.js';
-
-dotenv.config();
+const MEDBASE_GROUP_ID = /^[A-Za-z0-9]{1,12}$/;
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 const app = new Hono();
 const PORT = process.env.PORT || 3000;
@@ -63,6 +67,27 @@ function getThursdaysInRange(startDateStr, endDateStr) {
   
   return thursdays;
 }
+
+// ----------------------------------------------------
+// MedBase swap notices (medbase-mobile /api/swap → LINE DM)
+// ----------------------------------------------------
+// Outside /api/*: the caller is MedBase's server, authenticated by an HMAC
+// over the raw body with a shared secret and a 5-minute timestamp window.
+app.post('/integrations/medbase', async (c) => {
+  const rawBody = await c.req.text();
+  if (!verifyNotifySignature(rawBody, c.req.header('x-medbase-timestamp'), c.req.header('x-medbase-signature'))) {
+    return c.json({ ok: false, error: 'invalid signature' }, 401);
+  }
+  try {
+    const notice = JSON.parse(rawBody);
+    const delivered = await deliverNotice(notice, pushMessage);
+    console.log(`[MedBase] ${notice.event} delivered to ${delivered} LINE account(s)`);
+    return c.json({ ok: true, delivered });
+  } catch (error) {
+    console.error('[MedBase] notice failed:', error.message);
+    return c.json({ ok: false, error: error.message }, 400);
+  }
+});
 
 // ----------------------------------------------------
 // Recognition progress (public/progress.html)
@@ -336,6 +361,40 @@ app.post('/api/doctor-mappings/bulk', async (c) => {
   } catch (error) {
     return c.json({ error: error.message }, 500);
   }
+});
+
+// MedBase settings per LINE group (admin page). Member counts come from LINE
+// so the page can show what a daily reminder costs against the push quota.
+app.get('/api/medbase/groups', async (c) => {
+  const groups = db.medbase_groups.getAll();
+  const counts = await Promise.all(groups.map(g => getGroupMemberCount(g.line_group_id)));
+  return c.json({
+    enabled: medbaseEnabled,
+    defaultGroup: DEFAULT_MEDBASE_GROUP,
+    quota: await getPushQuota(),
+    groups: groups.map((g, i) => ({ ...g, member_count: counts[i] }))
+  });
+});
+
+app.put('/api/medbase/groups/:lineGroupId', async (c) => {
+  const lineGroupId = c.req.param('lineGroupId');
+  const body = await c.req.json().catch(() => ({}));
+  const medbaseGroup = String(body.medbaseGroup || '').trim();
+  const remindTime = String(body.remindTime || '20:00');
+  if (!/^[CR][0-9a-f]{32}$/.test(lineGroupId)) return c.json({ error: 'LINE 群組 ID 格式錯誤' }, 400);
+  if (!MEDBASE_GROUP_ID.test(medbaseGroup)) return c.json({ error: 'MedBase 群組代碼錯誤' }, 400);
+  if (!HHMM.test(remindTime)) return c.json({ error: '提醒時間需為 HH:MM' }, 400);
+  return c.json(db.medbase_groups.upsert(lineGroupId, {
+    groupName: String(body.groupName || '').trim().slice(0, 50),
+    medbaseGroup,
+    remindEnabled: Boolean(body.remindEnabled),
+    remindTime,
+    notifyPublish: Boolean(body.notifyPublish)
+  }));
+});
+
+app.delete('/api/medbase/groups/:lineGroupId', (c) => {
+  return c.json({ removed: db.medbase_groups.remove(c.req.param('lineGroupId')) });
 });
 
 // Delete a doctor-group mapping

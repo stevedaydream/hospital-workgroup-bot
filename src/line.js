@@ -5,6 +5,7 @@ import dotenv from 'dotenv';
 import { db } from './db.js';
 import { analyzeCaseImage, analyzeMultipleImages, primaryProviderLabel, modelLabel, isModelLoaded } from './ai.js';
 import { createJob, updateJob, trackModelStage } from './progress.js';
+import { medbaseCommand, medbaseEnabled, MEDBASE_APP_URL } from './medbase.js';
 
 dotenv.config();
 
@@ -84,6 +85,33 @@ export async function pushMessage(to, messages) {
   } catch (error) {
     console.error(`Error sending LINE push to ${to}:`, error);
   }
+}
+
+async function lineGet(path) {
+  try {
+    const response = await fetch(`https://api.line.me${path}`, {
+      headers: { 'Authorization': `Bearer ${LINE_CHANNEL_ACCESS_TOKEN}` },
+      signal: AbortSignal.timeout(8000)
+    });
+    return response.ok ? await response.json() : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Members in a group (a push to a group is billed once per member); null if unknown. */
+export async function getGroupMemberCount(groupId) {
+  const path = groupId.startsWith('R') ? `/v2/bot/room/${groupId}/members/count` : `/v2/bot/group/${groupId}/members/count`;
+  return (await lineGet(path))?.count ?? null;
+}
+
+/** This month's push quota: { limit, used } (limit null when unlimited). */
+export async function getPushQuota() {
+  const [quota, usage] = await Promise.all([lineGet('/v2/bot/message/quota'), lineGet('/v2/bot/message/quota/consumption')]);
+  return {
+    limit: quota?.type === 'limited' ? quota.value : null,
+    used: usage?.totalUsage ?? null
+  };
 }
 
 async function downloadMessageContent(messageId) {
@@ -200,6 +228,27 @@ function getMainMenuFlex(sourceId) {
             height: "sm",
             margin: "md"
           },
+          // MedBase 排班：查詢用 message action，觸發的是免費的回覆
+          ...(medbaseEnabled ? [
+            {
+              type: "box",
+              layout: "horizontal",
+              spacing: "sm",
+              margin: "md",
+              contents: [
+                { type: "button", action: { type: "message", label: "🗓 我的班", text: "我的班" }, style: "secondary", height: "sm" },
+                { type: "button", action: { type: "message", label: "👥 明天值班", text: "明天值班" }, style: "secondary", height: "sm" }
+              ]
+            },
+            {
+              type: "button",
+              action: { type: "uri", label: "📱 開啟 MedBase 班表", uri: MEDBASE_APP_URL },
+              style: "primary",
+              color: "#4338ca",
+              height: "sm",
+              margin: "sm"
+            }
+          ] : []),
           {
             type: "separator",
             color: "#e1e6e9",
@@ -832,6 +881,12 @@ export async function handleWebhookEvent(event) {
     if (message.type === 'text') {
       const text = message.text.trim();
       const sourceId = event.source.groupId || event.source.roomId || event.source.userId;
+
+      const medbaseReply = await medbaseCommand(text, event.source);
+      if (medbaseReply) {
+        await replyMessage(event.replyToken, medbaseReply);
+        return;
+      }
 
       if (text === 'menu' || text.endsWith('選單') || text === '選單' || text === '助手' || text === '說明') {
         await replyMessage(event.replyToken, getMainMenuFlex(sourceId));

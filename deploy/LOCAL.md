@@ -94,6 +94,21 @@ schtasks /Create /SC ONLOGON /TN "HospitalBot" /TR "cmd /c cd /d H:\project\hosp
 
 Local AI Gateway 已有登入自動啟動的排程（「Local AI Gateway」）。有 Port Monitor 時它會自動拉起模型；沒有 Port Monitor 時，Strata 或 Qwen3.6 至少要手動開一個，否則所有辨識都會失敗或走 Gemini。
 
+## 4.1 MedBase 排班串接
+
+Bot 只透過 MedBase 手機版的唯讀入口 `https://medbase-mobile.vercel.app/api/bot` 讀班表，碰不到通訊錄與帳密。
+
+| 這台 `.env` | medbase-mobile（Vercel）環境變數 |
+|---|---|
+| `MEDBASE_API_KEY` | `BOT_API_KEY`（同一個值） |
+| `MEDBASE_NOTIFY_SECRET` | `BOT_NOTIFY_SECRET`（同一個值） |
+| — | `BOT_NOTIFY_URL` = `https://relay-xi-pied.vercel.app/integrations/medbase` |
+
+- **綁定**：MedBase 手機版「設定 → LINE 通知 → 綁定 LINE」，會開啟 LINE 並預填「綁定 <碼>」（10 分鐘有效、只能私訊使用）。
+- **查詢（回覆，不計額度）**：`我的班`、`今天值班`／`明天值班`／`後天值班`／`誰值班`、`解除綁定`。群組內依管理頁設定的 MedBase 群組，私訊依綁定者所屬群組。
+- **推播（計額度）**：換班申請／回覆私訊當事人（1 則／人）；管理頁逐群組開啟「每日提醒明日值班」與「班表發布通知」（每次 × 群組人數，管理頁顯示預估）。發布偵測每 10 分鐘比對班表版本。
+- **Rich Menu**：`node scripts/setup-richmenu.mjs` 預覽，`--apply` 建立並設為所有人的預設選單。圖檔由 `scripts/richmenu/richmenu.html` 以 Edge 無頭模式截圖產生（指令見腳本開頭）。
+
 ## 5. 這台電腦的限制
 
 - **睡眠 = 服務中斷**：電源選項把「睡眠」設為「永不」；筆電則要接電、闔蓋不睡眠。

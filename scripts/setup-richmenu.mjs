@@ -41,7 +41,7 @@ const menu = {
     { bounds: cell(2, 0), action: { type: 'uri', label: '行事曆', uri: CALENDAR_URL } },
     { bounds: cell(0, 1), action: { type: 'uri', label: 'MedBase', uri: `${MEDBASE_URL}/schedule` } },
     { bounds: cell(1, 1), action: { type: 'uri', label: '注意事項', uri: NOTES_URL } },
-    { bounds: cell(2, 1), action: { type: 'message', label: '功能選單', text: '選單' } }
+    { bounds: cell(2, 1), action: { type: 'message', label: '功能選單', text: '主選單' } }
   ]
 };
 

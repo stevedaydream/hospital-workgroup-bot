@@ -166,6 +166,24 @@ function travelSummaryText() {
   return parts.join('\n');
 }
 
+/** A short text with quick-reply buttons for the everyday commands. */
+function quickMenuText(text) {
+  const item = (label, message) => ({ type: "action", action: { type: "message", label, text: message } });
+  return {
+    type: "text",
+    text,
+    quickReply: {
+      items: [
+        item("📋 近期值班", "近期值班"),
+        item("🗓 我的班", "我的班"),
+        item("📅 今日行程", "今日行程"),
+        item("✈️ 出國/長假", "出國"),
+        item("📖 主選單", "主選單")
+      ]
+    }
+  };
+}
+
 function getMainMenuFlex(sourceId) {
   const liffUrl = `https://liff.line.me/${LIFF_NOTES_ID}?groupId=${sourceId}`;
   const adminLiffUrl = `https://liff.line.me/${process.env.LIFF_ADMIN_ID || 'placeholder_admin_liff_id'}?groupId=${sourceId}`;
@@ -906,25 +924,12 @@ export async function handleWebhookEvent(event) {
   console.log(`[Webhook Event] ${new Date().toISOString()} type: ${event.type}, delay: ${delayMs}ms${redelivery}, source: ${JSON.stringify(event.source)}`);
 
   if (event.type === 'join') {
-    // Keep the join quiet: just the group ID, with quick replies; the full menu comes on 「選單」
+    // Keep the join quiet: just the group ID, with quick replies; the full menu comes on 「主選單」
     const sourceId = event.source.groupId || event.source.roomId || event.source.userId;
     console.log(`[Webhook Join] Joined group/room/user ID: ${sourceId}`);
     db.line_groups.recordJoin(sourceId, await getGroupName(sourceId));
 
-    const quickItem = (label, text) => ({ type: "action", action: { type: "message", label, text } });
-    await replyMessage(event.replyToken, {
-      type: "text",
-      text: `本群組的 LINE ID：\n${sourceId}\n\n輸入「選單」可開啟主選單。`,
-      quickReply: {
-        items: [
-          quickItem("📋 近期值班", "近期值班"),
-          quickItem("🗓 我的班", "我的班"),
-          quickItem("📅 今日行程", "今日行程"),
-          quickItem("✈️ 出國/長假", "出國"),
-          quickItem("📖 選單", "選單")
-        ]
-      }
-    });
+    await replyMessage(event.replyToken, quickMenuText(`本群組的 LINE ID：\n${sourceId}\n\n輸入「主選單」可開啟完整選單。`));
     return;
   }
 
@@ -948,7 +953,9 @@ export async function handleWebhookEvent(event) {
         return;
       }
 
-      if (text === 'menu' || text.endsWith('選單') || text === '選單' || text === '助手' || text === '說明') {
+      if (text === '選單') {
+        await replyMessage(event.replyToken, quickMenuText('要做什麼？點下方按鈕，或輸入「主選單」看全部功能。'));
+      } else if (text === 'menu' || text.endsWith('選單') || text === '助手' || text === '說明') {
         await replyMessage(event.replyToken, getMainMenuFlex(sourceId));
       } else if (text === '/notes' || text === '編輯筆記') {
         const liffUrl = `https://liff.line.me/${LIFF_NOTES_ID}?groupId=${sourceId}`;

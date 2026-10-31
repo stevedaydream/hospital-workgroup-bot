@@ -19,6 +19,7 @@ dotenv.config();
 const MEDBASE_API_URL = (process.env.MEDBASE_API_URL || 'https://medbase-mobile.vercel.app').replace(/\/+$/, '');
 const MEDBASE_API_KEY = process.env.MEDBASE_API_KEY || '';
 const MEDBASE_NOTIFY_SECRET = process.env.MEDBASE_NOTIFY_SECRET || '';
+const LINE_BOT_BASIC_ID = process.env.LINE_BOT_BASIC_ID || '@270auclk';
 export const MEDBASE_APP_URL = `${MEDBASE_API_URL}/schedule`;
 export const DEFAULT_MEDBASE_GROUP = '9A9B';
 
@@ -105,9 +106,17 @@ function linkHelp() {
 
 export async function selfPayCommand(request, source, on = () => true) {
   if (!on('medbase_lookup')) return { silent: true };
-  if (!request.query) return { type: 'text', text: '請輸入「自費 關鍵字」，例如「自費 人工關節」。也可搜尋英文名、院內碼或科別。' };
   if (request.query.length > 100) return { type: 'text', text: '搜尋關鍵字請限制在 100 字以內。' };
-  if (source.type !== 'user') return { type: 'text', text: '自費查詢依 MedBase 帳號權限提供，請在與「醫院群組助手」的私訊中輸入相同查詢。' };
+  if (source.type !== 'user') {
+    const command = request.query ? `自費 ${request.query}` : '自費';
+    const uri = `https://line.me/R/oaMessage/${encodeURIComponent(LINE_BOT_BASIC_ID)}/?${encodeURIComponent(command)}`;
+    return {
+      type: 'text',
+      text: `自費查詢請在官方帳號私訊進行。\n點下方連結開啟「醫院群組助手」，查詢文字已帶入，按「送出」即可：\n${uri}`,
+      quickReply: { items: [{ type: 'action', action: { type: 'uri', label: '開啟官方帳號聊天', uri } }] }
+    };
+  }
+  if (!request.query) return { type: 'text', text: '請輸入「自費 關鍵字」，例如「自費 人工關節」。也可搜尋英文名、院內碼或科別。' };
   if (!medbaseEnabled) return { type: 'text', text: '自費直接查詢尚未設定 MedBase 串接，請聯絡管理者。' };
   const me = source.userId && db.medbase_links.get(source.userId);
   if (!me) return { type: 'text', text: linkHelp() };

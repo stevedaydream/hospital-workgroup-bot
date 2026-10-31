@@ -48,7 +48,13 @@ test('handler authorizes private queries from the binding and rechecks every pag
     assert.equal((await medbaseCommand('自費 骨科',source)).type,'flex');
     assert.equal(calls[0].his,'trusted-his');
     assert.equal(calls[0].action,'items');
-    assert.match((await medbaseCommand('自費 骨科',{...source,type:'group'})).text,/私訊/);
+    const groupReply=await medbaseCommand('自費 骨科 A&B',{...source,type:'group'});
+    assert.match(groupReply.text,/私訊/);
+    const chatUrl=new URL(groupReply.quickReply.items[0].action.uri);
+    assert.equal(chatUrl.pathname,'/R/oaMessage/%40270auclk/');
+    assert.equal(decodeURIComponent(chatUrl.search.slice(1)),'自費 骨科 A&B');
+    assert.ok(groupReply.text.includes(chatUrl.toString()));
+    assert.ok((await medbaseCommand('自費',{...source,type:'room'})).quickReply);
     assert.deepEqual(await medbaseCommand('自費 骨科',source,()=>false),{silent:true});
     assert.equal(calls.length,1);
     await selfPayCommand({query:'骨科',offset:5,his:'forged'},source);

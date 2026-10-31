@@ -17,6 +17,7 @@ export const FEATURES = [
   { key: 'calendar', label: '行事曆', hint: '「行事曆」「今日行程」「明日行程」', defaultOn: true },
   { key: 'notes', label: '注意事項', hint: '「編輯筆記」連結與選單按鈕', defaultOn: true },
   { key: 'travel', label: '休假／出國', hint: '「休假」「出國」查詢與登記連結', defaultOn: true },
+  { key: 'leave_autoreg', label: '群組休假訊息自動登記', hint: '辨識「姓名 11/4-11/8 請假，代理人代看」並回覆登記結果', defaultOn: false },
   { key: 'duty', label: '值班查詢（MedBase）', hint: '「近期值班」「今天值班」「明天值班」', defaultOn: true },
   { key: 'my_schedule', label: '我的班（MedBase）', hint: '在群組輸入「我的班」改以私訊回覆', defaultOn: true },
   { key: 'medbase_lookup', label: 'MedBase 功能查詢', hint: '「自費 關鍵字」私訊查詢與複製；「MedBase 查詢」功能入口', defaultOn: true },

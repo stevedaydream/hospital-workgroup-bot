@@ -7,6 +7,7 @@ import { analyzeCaseImage, analyzeMultipleImages, primaryProviderLabel, modelLab
 import { createJob, updateJob, trackModelStage } from './progress.js';
 import { medbaseCommand, medbaseEnabled, MEDBASE_APP_URL, selfPayCommand } from './medbase.js';
 import { selfPayPage } from './self-pay.js';
+import { parseLeaveMessage } from './leave-message.js';
 import { todayInTaipei, dayOfWeek } from './util/date.js';
 import { featureEnabled } from './features.js';
 
@@ -981,6 +982,29 @@ export async function handleWebhookEvent(event) {
       // Commands of a feature switched off for this group are ignored silently.
       const feature = commandFeature(text);
       if (feature && !featureEnabled(sourceId, feature)) return;
+
+      if (event.source.type === 'group' && event.source.userId && message.id &&
+          featureEnabled(sourceId, 'travel') && featureEnabled(sourceId, 'leave_autoreg')) {
+        const parsed = parseLeaveMessage(text, todayInTaipei(new Date(event.timestamp || Date.now())));
+        if (parsed) {
+          if (parsed.error) {
+            await replyMessage(event.replyToken, { type: 'text', text: `尚未登記休假：${parsed.error}` });
+            return;
+          }
+          const user = await db.users.getByLineUserId(event.source.userId);
+          const result = db.travels.importFromLine(parsed.trip, {
+            messageId: message.id, sourceId, userId: event.source.userId, by: user?.display_name || 'LINE 群組訊息'
+          });
+          if (result.status === 'duplicate') return;
+          const t = result.registration;
+          const link = travelLiffUrl() + (travelLiffUrl().includes('?') ? '&' : '?') + `edit=${t.id}`;
+          const heading = result.status === 'created' ? '已自動登記休假' : result.status === 'exists' ? '已有相同休假登記，未重複新增' : '已有重疊休假，未新增或覆寫，請確認原登記';
+          await replyMessage(event.replyToken, {
+            type: 'text', text: `${heading}\n${t.traveler}｜${t.depart_date}～${t.return_date}｜${t.leave_period}${t.deputy ? `\n代理／代看：${t.deputy}` : ''}\n查看／修改：\n${link}`
+          });
+          return;
+        }
+      }
 
       const medbaseReply = await medbaseCommand(text, event.source, (f) => featureEnabled(sourceId, f));
       if (medbaseReply) {

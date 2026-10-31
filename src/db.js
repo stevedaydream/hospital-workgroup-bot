@@ -149,6 +149,15 @@ sqlite.exec(`
   CREATE INDEX IF NOT EXISTS idx_medbase_links_his ON medbase_links (his);
   CREATE INDEX IF NOT EXISTS idx_events_group  ON group_events (source_group_id, date);
   CREATE INDEX IF NOT EXISTS idx_travel_return ON travel_registrations (return_date);
+
+  /* Persistent deduplication for group leave announcements, including deleted registrations. */
+  CREATE TABLE IF NOT EXISTS leave_message_imports (
+    line_message_id TEXT PRIMARY KEY,
+    source_group_id TEXT NOT NULL,
+    source_user_id TEXT NOT NULL,
+    registration_id INTEGER REFERENCES travel_registrations(id) ON DELETE SET NULL,
+    created_at TEXT NOT NULL
+  );
 `);
 
 // travel_registrations.kind: 出國 (abroad) or 長假 (long leave). Rows from
@@ -408,6 +417,26 @@ export const db = {
 
   // --- Overseas travel registrations ---
   travels: {
+    /** Atomic message deduplication + overlap check + registration. */
+    importFromLine(trip, { messageId, sourceId, userId, by }) {
+      const normalizeName = name => name.replace(/^NP\s*|醫師$|\s*NP$/giu, '').replace(/\s+/g, '');
+      return sqlite.transaction(() => {
+        if (sqlite.prepare('SELECT 1 FROM leave_message_imports WHERE line_message_id = ?').get(messageId)) return { status: 'duplicate' };
+        const overlaps = sqlite.prepare("SELECT * FROM travel_registrations WHERE kind IN ('休假', '長假') AND depart_date <= ? AND return_date >= ?")
+          .all(trip.return_date, trip.depart_date).filter(t => normalizeName(t.traveler) === normalizeName(trip.traveler) &&
+            (t.leave_period === '全天' || trip.leave_period === '全天' || t.leave_period === trip.leave_period));
+        const same = overlaps.find(t => t.depart_date === trip.depart_date && t.return_date === trip.return_date &&
+          t.leave_period === trip.leave_period && (t.deputy || '') === (trip.deputy || ''));
+        const status = same ? 'exists' : overlaps.length ? 'overlap' : 'created';
+        let registration = same || overlaps[0] || null;
+        if (status === 'created') {
+          registration = this.create(trip, by);
+        }
+        sqlite.prepare(`INSERT INTO leave_message_imports (line_message_id, source_group_id, source_user_id, registration_id, created_at)
+          VALUES (?, ?, ?, ?, ?)`).run(messageId, sourceId, userId, registration?.id ?? null, nowIso());
+        return { status, registration };
+      })();
+    },
     /** Trips not yet over (return_date >= today); `includePast` returns everything. */
     list({ includePast = false } = {}) {
       return includePast

@@ -20,7 +20,7 @@ export function parseTravel(body) {
     leave_period: leave ? (body.leavePeriod ?? '全天') : '全天',
     deputy: text(body.deputy, 30), note: text(body.note, 300)
   };
-  if (!trip.traveler) return { error: '請填寫醫師姓名' };
+  if (!trip.traveler) return { error: '請填寫 NP 或醫師姓名' };
   if (!validDate(trip.depart_date) || !validDate(trip.return_date)) return { error: '請填寫有效的起訖日期' };
   if (trip.return_date < trip.depart_date) return { error: '結束日期不能早於開始日期' };
   if (!PERIODS.has(trip.leave_period)) return { error: '請選擇全天、上午或下午' };

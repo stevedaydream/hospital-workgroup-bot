@@ -161,7 +161,7 @@ function travelSummaryText() {
   const abroad = trips.filter(t => t.depart_date <= today);
   const upcoming = trips.filter(t => t.depart_date > today);
 
-  const parts = ['✈️ 醫師休假與出國'];
+  const parts = ['✈️ NP/醫師休假與出國'];
   parts.push(abroad.length ? '\n今日休假／出國：\n' + abroad.map(line).join('\n') : '\n今日沒有休假或出國登記。');
   if (upcoming.length) parts.push('\n即將休假／出國：\n' + upcoming.map(line).join('\n'));
   parts.push('\n登記或修改：\n' + travelLiffUrl());
@@ -275,7 +275,7 @@ function getMainMenuFlex(sourceId) {
             type: "button",
             action: {
               type: "uri",
-              label: "✈️ 醫師休假與出國登記",
+              label: "✈️ NP/醫師休假與出國登記",
               uri: travelLiffUrl()
             },
             style: "primary",

@@ -8,6 +8,7 @@ import { createJob, updateJob, trackModelStage } from './progress.js';
 import { medbaseCommand, medbaseEnabled, MEDBASE_APP_URL, selfPayCommand } from './medbase.js';
 import { selfPayPage } from './self-pay.js';
 import { parseLeaveMessage } from './leave-message.js';
+import { prepareLeaveAlias, leaveAliasPostback, leaveRegistrationReply } from './leave-alias.js';
 import { todayInTaipei, dayOfWeek } from './util/date.js';
 import { featureEnabled } from './features.js';
 
@@ -945,6 +946,14 @@ export async function handleWebhookEvent(event) {
   const redelivery = event.deliveryContext?.isRedelivery ? ', REDELIVERY' : '';
   console.log(`[Webhook Event] ${new Date().toISOString()} type: ${event.type}, delay: ${delayMs}ms${redelivery}, source: ${JSON.stringify(event.source)}`);
 
+  if (event.type === 'postback' && event.postback?.data?.startsWith('leavealias:')) {
+    const sourceId = event.source.groupId || event.source.roomId || event.source.userId;
+    if (!featureEnabled(sourceId, 'travel') || !featureEnabled(sourceId, 'leave_autoreg')) return;
+    const result = leaveAliasPostback(event.postback.data, event.source, travelLiffUrl());
+    if (!result.silent) await replyMessage(event.replyToken, result);
+    return;
+  }
+
   if (event.type === 'postback' && event.postback?.data?.startsWith('mbitems:')) {
     const sourceId = event.source.groupId || event.source.roomId || event.source.userId;
     const request = selfPayPage(event.postback.data);
@@ -992,17 +1001,12 @@ export async function handleWebhookEvent(event) {
             return;
           }
           const user = await db.users.getByLineUserId(event.source.userId);
-          const result = db.travels.importFromLine(parsed.trip, {
+          const meta = {
             messageId: message.id, sourceId, userId: event.source.userId, by: user?.display_name || 'LINE 群組訊息'
-          });
-          if (result.status === 'duplicate') return;
-          const t = result.registration;
-          const deputyAlias = result.status !== 'overlap' && parsed.trip.deputy && parsed.trip.deputy !== t.deputy ? `（${parsed.trip.deputy}）` : '';
-          const link = travelLiffUrl() + (travelLiffUrl().includes('?') ? '&' : '?') + `edit=${t.id}`;
-          const heading = result.status === 'created' ? '已自動登記休假' : result.status === 'exists' ? '已有相同休假登記，未重複新增' : '已有重疊休假，未新增或覆寫，請確認原登記';
-          await replyMessage(event.replyToken, {
-            type: 'text', text: `${heading}\n${t.traveler}｜${t.depart_date}～${t.return_date}｜${t.leave_period}${t.deputy ? `\n代理／代看：${t.deputy}${deputyAlias}` : ''}\n查看／修改：\n${link}`
-          });
+          };
+          const pending = await prepareLeaveAlias(parsed.trip, meta, travelLiffUrl());
+          const result = pending || leaveRegistrationReply(db.travels.importFromLine(parsed.trip, meta), parsed.trip, travelLiffUrl());
+          if (!result.silent) await replyMessage(event.replyToken, result);
           return;
         }
       }

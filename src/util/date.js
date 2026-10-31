@@ -19,8 +19,8 @@ const taipeiDateFormatter = new Intl.DateTimeFormat('en-CA', {
 });
 
 /** Current date in Taiwan, as YYYY-MM-DD. */
-export function todayInTaipei() {
-  return taipeiDateFormatter.format(new Date());
+export function todayInTaipei(at = new Date()) {
+  return taipeiDateFormatter.format(at);
 }
 
 /** Shift a YYYY-MM-DD string by whole days. Pure string in, string out. */

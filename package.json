@@ -9,6 +9,7 @@
   },
   "scripts": {
     "start": "node src/index.js",
+    "test": "node --test scripts/*.test.mjs",
     "dev": "node --watch src/index.js",
     "migrate:supabase": "node scripts/migrate-from-supabase.mjs"
   },

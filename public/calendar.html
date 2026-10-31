@@ -88,6 +88,9 @@
       right: 10px;
     }
 
+    .event-card.absence { background: var(--amber-tint); }
+    .absence-warning { color: var(--ink); font-weight: 700; font-size: 13px; margin-top: 4px; }
+    .absence-link { color: var(--accent-ink); font-size: 13px; text-underline-offset: 3px; }
     .modal-card { max-width: 440px; }
   </style>
 </head>
@@ -95,7 +98,7 @@
   <div class="liff-container">
     <!-- User Badge -->
     <div class="user-badge" id="user-badge" style="display: none;">
-      <img class="user-avatar" id="user-avatar" src="" alt="avatar">
+      <img class="user-avatar" id="user-avatar" hidden alt="avatar">
       <span id="user-name">載入同仁資料中...</span>
     </div>
 
@@ -103,7 +106,7 @@
     <div class="header">
       <div class="header-icon purple">📅</div>
       <h1>病房行事曆與活動行程</h1>
-      <p>管理晨會報告排程與病房各項科內活動行程</p>
+      <p>管理晨會報告、病房活動與醫師休假註記</p>
       <div class="meta-info" id="meta-info">連線中...</div>
     </div>
 
@@ -114,6 +117,8 @@
         <span>＋</span> 手動新增行程
       </button>
     </div>
+
+    <p class="event-description">休假與出國顯示未來 90 天，其他日期若有行程也會顯示對應註記。<a class="absence-link" href="/travel.html">登記休假／出國</a></p>
 
     <!-- Events Timeline -->
     <div class="events-timeline" id="events-list">
@@ -218,7 +223,7 @@
     // Modal Control
     function openAddModal() {
       document.getElementById('input-title').value = '';
-      document.getElementById('input-date').value = new Date().toISOString().split('T')[0];
+      document.getElementById('input-date').value = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
       document.getElementById('input-time').value = '08:00';
       document.getElementById('input-location').value = '';
       document.getElementById('input-description').value = '';
@@ -247,6 +252,7 @@
           document.getElementById('user-name').innerText = userName;
           if (userAvatarUrl) {
             document.getElementById('user-avatar').src = userAvatarUrl;
+            document.getElementById('user-avatar').hidden = false;
           }
           document.getElementById('user-badge').style.display = 'flex';
 
@@ -276,7 +282,7 @@
     // Fetch Events List
     async function fetchEventsList() {
       try {
-        const response = await fetch(`/api/events?groupId=${groupId}`);
+        const response = await fetch(`/api/events?groupId=${encodeURIComponent(groupId)}&absences=1`);
         if (response.ok) {
           const events = await response.json();
           renderEventsList(events);
@@ -313,7 +319,7 @@
       
       sortedDates.forEach(dateStr => {
         const dateObj = new Date(dateStr);
-        const dayOfWeekStr = ['日', '一', '二', '三', '四', '五', '六'][dateObj.getDay()];
+        const dayOfWeekStr = ['日', '一', '二', '三', '四', '五', '六'][dateObj.getUTCDay()];
         
         let dateHtml = `
           <div class="date-group">
@@ -322,7 +328,9 @@
         
         grouped[dateStr].forEach(event => {
           let cardClass = 'event-card';
-          if (event.title.includes('報告')) {
+          if (event.absence) {
+            cardClass += ' absence';
+          } else if (event.title.includes('報告')) {
             cardClass += ' presentation';
           } else if (event.title.includes('院務會議') || event.title.includes('停開')) {
             cardClass += ' meeting-exclusion';
@@ -344,9 +352,10 @@
                 ${metaParts.join('')}
               </div>
               ${event.description ? `<div class="event-description">${escapeHtml(event.description)}</div>` : ''}
-              <div class="event-card-actions">
+              ${event.conflicts?.length ? `<div class="absence-warning" role="status">休假／出國與報告重疊：${event.conflicts.map(escapeHtml).join('、')}，請確認安排。</div>` : ''}
+              ${event.absence ? `<a class="absence-link" href="/travel.html?edit=${event.registration_id}">查看／修改登記</a>` : `<div class="event-card-actions">
                 <button class="action-btn delete-btn" onclick="deleteEvent('${event.id}')" title="刪除行程" style="width:24px; height:24px; font-size:10px;">🗑️</button>
-              </div>
+              </div>`}
             </div>
           `;
         });
@@ -355,7 +364,7 @@
         container.insertAdjacentHTML('beforeend', dateHtml);
       });
 
-      document.getElementById('meta-info').innerText = `已排定 ${events.length} 筆行程`;
+      document.getElementById('meta-info').innerText = `已排定 ${events.filter(e => !e.absence).length} 筆行程・${new Set(events.filter(e => e.absence).map(e => e.registration_id)).size} 筆休假／出國登記`;
     }
 
     // Save Event

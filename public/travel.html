@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>出國與長假登記</title>
+  <title>醫師休假與出國登記</title>
   <link rel="stylesheet" href="/css/style.css">
   <style>
     .trip-list {
@@ -105,7 +105,7 @@
     }
     .kind-badge.leave { background: var(--amber-tint); color: var(--amber); }
 
-    /* 出國／長假 segmented switch at the top of the form */
+    /* 休假／出國 segmented switch at the top of the form */
     .kind-switch {
       display: flex;
       gap: 4px;
@@ -133,28 +133,30 @@
     }
     .optional { font-weight: 400; color: var(--ink-3); }
     .is-leave .abroad-only { display: none; }
+    .leave-only { display: none; }
+    .is-leave .leave-only { display: block; }
 
     .empty-state { text-align: center; color: var(--ink-3); padding: 32px 12px; font-size: 13px; }
-    .form-hint { font-size: 11px; color: var(--ink-3); margin-top: 4px; }
+    .form-hint { font-size: 12px; color: var(--ink-3); margin-top: 4px; }
     .modal-card { max-width: 460px; }
   </style>
 </head>
 <body>
   <div class="liff-container">
     <div class="user-badge" id="user-badge" style="display: none;">
-      <img class="user-avatar" id="user-avatar" src="" alt="avatar">
+      <img class="user-avatar" id="user-avatar" hidden alt="avatar">
       <span id="user-name">載入同仁資料中...</span>
     </div>
 
     <div class="header">
       <div class="header-icon">✈️</div>
-      <h1>出國與長假登記</h1>
-      <p>登記出國或長假的日期與代理人，方便科內安排</p>
+      <h1>醫師休假與出國登記</h1>
+      <p>登記醫師休假、出國日期與代理人，方便科內安排</p>
       <div class="meta-info" id="meta-info">連線中...</div>
     </div>
 
     <div class="directory-header">
-      <button class="filter-btn" id="btn-past" onclick="togglePast()">顯示已返國</button>
+      <button class="filter-btn" id="btn-past" onclick="togglePast()">顯示已結束</button>
       <button class="btn-add" onclick="openModal()">
         <span>＋</span> 新增登記
       </button>
@@ -175,13 +177,13 @@
 
       <div class="kind-switch" role="radiogroup" aria-label="類型">
         <button type="button" data-kind="出國" role="radio" onclick="setKind('出國')">✈️ 出國</button>
-        <button type="button" data-kind="長假" role="radio" onclick="setKind('長假')">🏖 長假</button>
+        <button type="button" data-kind="休假" role="radio" onclick="setKind('休假')">🏖 休假</button>
       </div>
 
       <div class="form-row">
         <div class="form-group" style="flex: 1;">
-          <label class="form-label" style="font-size: 12px;">姓名</label>
-          <input type="text" class="input-field" id="input-traveler" maxlength="30">
+          <label class="form-label" style="font-size: 12px;" for="input-traveler">醫師姓名</label>
+          <input type="text" class="input-field" id="input-traveler" maxlength="30" placeholder="請填寫醫師姓名">
         </div>
         <div class="form-group" style="flex: 1;">
           <label class="form-label" style="font-size: 12px;">事由 <span class="optional">（選填）</span></label>
@@ -218,6 +220,16 @@
         <div class="form-hint">必填只有姓名與起訖日期，其他可之後再補。</div>
       </div>
 
+      <div class="form-group leave-only">
+        <label class="form-label" for="input-leave-period">休假時段</label>
+        <select class="input-field" id="input-leave-period">
+          <option value="全天">全天</option>
+          <option value="上午">上午</option>
+          <option value="下午">下午</option>
+        </select>
+        <div class="form-hint">多日休假會套用相同時段；不同行程請分筆登記。</div>
+      </div>
+
       <div class="form-group">
         <label class="form-label" style="font-size: 12px;">代理人 <span class="optional">（選填）</span></label>
         <input type="text" class="input-field" id="input-deputy" maxlength="30" placeholder="例如：王醫師">
@@ -247,7 +259,7 @@
     let trips = [];
     let showPast = false;
     let editingId = null;
-    let formKind = '出國';
+    let formKind = '休假';
 
     // Taiwan date, so "目前在國外" flips at local midnight rather than 08:00.
     const todayStr = () => new Intl.DateTimeFormat('en-CA', {
@@ -272,7 +284,10 @@
           const profile = await liff.getProfile();
           userName = profile.displayName;
           document.getElementById('user-name').innerText = userName;
-          if (profile.pictureUrl) document.getElementById('user-avatar').src = profile.pictureUrl;
+          if (profile.pictureUrl) {
+            document.getElementById('user-avatar').src = profile.pictureUrl;
+            document.getElementById('user-avatar').hidden = false;
+          }
           document.getElementById('user-badge').style.display = 'flex';
 
           await fetch('/api/users/sync', {
@@ -284,7 +299,14 @@
       } catch (err) {
         console.error('LIFF initialization failed', err);
       }
+      const editId = Number(new URLSearchParams(location.search).get('edit'));
+      if (editId) {
+        showPast = true;
+        document.getElementById('btn-past').innerText = '隱藏已結束';
+        document.getElementById('btn-past').classList.add('active');
+      }
       await fetchTrips();
+      if (editId && trips.some(t => t.id === editId)) openModal(editId);
     }
 
     async function fetchTrips() {
@@ -304,7 +326,7 @@
       showPast = !showPast;
       const btn = document.getElementById('btn-past');
       btn.classList.toggle('active', showPast);
-      btn.innerText = showPast ? '隱藏已返國' : '顯示已返國';
+      btn.innerText = showPast ? '隱藏已結束' : '顯示已結束';
       fetchTrips();
     }
 
@@ -327,13 +349,13 @@
       const past = trips.filter(t => t.return_date < today);
 
       const sections = [
-        ['🌏 目前出國／長假中', abroad, 'abroad'],
-        ['🗓 即將出國／長假', upcoming, ''],
-        ...(showPast ? [['已返國', past, 'past']] : [])
+        ['今日休假／出國', abroad, 'abroad'],
+        ['🗓 即將休假／出國', upcoming, ''],
+        ...(showPast ? [['已結束', past, 'past']] : [])
       ].filter(([, list]) => list.length);
 
       if (!sections.length) {
-        container.innerHTML = '<div class="empty-state">目前沒有出國或長假登記。<br>點右上「新增登記」新增。</div>';
+        container.innerHTML = '<div class="empty-state">目前沒有休假或出國登記。<br>點右上「新增登記」新增。</div>';
       } else {
         container.innerHTML = sections.map(([title, list, kind]) => `
           <div>
@@ -343,7 +365,7 @@
       }
 
       document.getElementById('meta-info').innerText = abroad.length
-        ? `目前 ${abroad.length} 人出國或休長假・${upcoming.length} 筆即將開始`
+        ? `今日 ${abroad.length} 筆休假／出國登記・${upcoming.length} 筆即將開始`
         : `${upcoming.length} 筆即將開始`;
     }
 
@@ -354,7 +376,7 @@
     }
 
     function tripCard(t, kind) {
-      const isLeave = t.kind === '長假';
+      const isLeave = t.kind === '休假';
       const meta = [`<span>共 ${tripDays(t)} 天</span>`];
       if (t.deputy) meta.push(`<span>🤝 代理：${escapeHtml(t.deputy)}</span>`);
       meta.push(`<span>👤 ${escapeHtml(t.updated_by)} 登記</span>`);
@@ -362,7 +384,7 @@
         <div class="trip-card ${kind}">
           <div class="trip-head">
             <span class="trip-name">${escapeHtml(t.traveler)}</span>
-            <span class="kind-badge ${isLeave ? 'leave' : ''}">${isLeave ? '🏖 長假' : '✈️ 出國'}</span>
+            <span class="kind-badge ${isLeave ? 'leave' : ''}">${isLeave ? '休假・' + escapeHtml(t.leave_period || '全天') : '✈️ 出國'}</span>
             ${t.destination ? `<span class="trip-dest">📍 ${escapeHtml(t.destination)}</span>` : ''}
             ${t.purpose ? `<span class="purpose-badge">${escapeHtml(t.purpose)}</span>` : ''}
           </div>
@@ -383,19 +405,19 @@
       traveler: 'input-traveler', purpose: 'input-purpose', destination: 'input-destination',
       departDate: 'input-depart-date', departTime: 'input-depart-time', departFlight: 'input-depart-flight',
       returnDate: 'input-return-date', returnTime: 'input-return-time', returnFlight: 'input-return-flight',
-      deputy: 'input-deputy', note: 'input-note'
+      leavePeriod: 'input-leave-period', deputy: 'input-deputy', note: 'input-note'
     };
     const COLUMNS = {
       traveler: 'traveler', purpose: 'purpose', destination: 'destination',
       departDate: 'depart_date', departTime: 'depart_time', departFlight: 'depart_flight',
       returnDate: 'return_date', returnTime: 'return_time', returnFlight: 'return_flight',
-      deputy: 'deputy', note: 'note'
+      leavePeriod: 'leave_period', deputy: 'deputy', note: 'note'
     };
 
-    // 長假 has no flights: those inputs are hidden and the date labels change.
+    // Leave has no flights: those inputs are hidden and the date labels change.
     function setKind(kind) {
       formKind = kind;
-      const leave = kind === '長假';
+      const leave = kind === '休假';
       document.querySelector('#trip-modal .modal-card').classList.toggle('is-leave', leave);
       document.querySelectorAll('.kind-switch button').forEach(b => {
         const on = b.dataset.kind === kind;
@@ -409,14 +431,17 @@
     function openModal(id = null) {
       editingId = id;
       const trip = id ? trips.find(t => t.id === id) : null;
-      setKind(trip?.kind || '出國');
+      setKind(trip?.kind === '長假' ? '休假' : (trip?.kind || '休假'));
       for (const [key, elId] of Object.entries(FIELDS)) {
         document.getElementById(elId).value = trip ? (trip[COLUMNS[key]] || '') : '';
       }
+      document.getElementById('input-leave-period').value = trip?.leave_period || '全天';
       if (!trip) {
-        document.getElementById('input-traveler').value = userName;
+        document.getElementById('input-traveler').value = '';
         document.getElementById('input-depart-date').value = todayStr();
+        document.getElementById('input-return-date').value = todayStr();
       }
+      document.getElementById('input-return-date').min = document.getElementById('input-depart-date').value;
       document.getElementById('modal-title').innerText = trip ? '✏️ 修改登記' : '＋ 新增登記';
       document.getElementById('trip-modal').classList.add('show');
     }
@@ -436,7 +461,7 @@
       const body = {};
       for (const [key, elId] of Object.entries(FIELDS)) body[key] = document.getElementById(elId).value.trim();
       body.kind = formKind;
-      if (formKind === '長假') {
+      if (formKind === '休假') {
         // Hidden flight fields must not keep values typed while 出國 was selected.
         for (const key of ['departTime', 'departFlight', 'returnTime', 'returnFlight']) body[key] = '';
       }
@@ -446,7 +471,7 @@
         return;
       }
       if (body.returnDate < body.departDate) {
-        showToast('返國日期不能早於出發日期', true);
+        showToast('結束日期不能早於開始日期', true);
         return;
       }
 

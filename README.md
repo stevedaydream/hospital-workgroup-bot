@@ -37,7 +37,7 @@ hospital-workgroup-bot/
 │   ├── dispatch.html       # URO 一對多醫師勾選
 │   ├── admin.html          # 群組對照與人員管理
 │   ├── calendar.html       # 行事曆與晨會輪序
-│   └── travel.html         # 出國時刻登記（全科共用）
+│   └── travel.html         # 醫師休假與出國登記（全科共用）
 ├── src/
 │   ├── util/date.js        # 台灣時區日期工具（所有日期都必須經過這裡）
 │   ├── db.js               # SQLite 資料層
@@ -98,3 +98,26 @@ curl "http://localhost:3000/api/test-cron?key=$ADMIN_API_KEY"
 - **日期一律用 `src/util/date.js`。** 不要再寫 `new Date().toISOString().split('T')[0]`——那是 UTC 日期，會在台灣時間早上 8 點換日，正好落在 07:30 發送與 08:00 晨會之間。
 - **轉發排程看的是 `dispatch_date`（預定發送日），不是建立日。** 今天上傳的圖，`dispatch_date` 是明天。
 - **新增 `/api/*` 端點預設就會被驗證擋住。** 若要開放，必須明確加進 `src/index.js` 的 `OPEN_API_PATHS`。
+
+## 醫師休假與出國登記
+
+- LINE 輸入「休假」「休假登記」「誰休假」或原有的「出國」「長假」，可查詢今日與即將開始的登記並開啟表單。
+- 休假支援單日、多日及全天／上午／下午；多日登記的時段套用至每日，不同時段請分筆登記。醫師姓名與起訖日期必填，代理人、備註選填。
+- 行事曆從同一份登記顯示未來 90 天的每日註記；其他日期若已有行程，也會顯示對應註記。依醫師姓名、日期與時段提示報告衝突，未填報告時間時會保守提示；提示不會自動調整輪序。
+- 首次以新版啟動時，SQLite 自動增加 `leave_period` 欄位，既有「長假」保留原資料並轉為全天休假。休假註記不會寫入報告排程或觸發報告提醒。
+- 執行 `npm test` 驗證日期、半天衝突比對與舊資料轉換。
+
+## MedBase 主治醫師基礎名單
+
+管理頁「從醫師名單建立群組對照」可直接載入 MedBase 通訊錄中職稱包含「主治」或為「VS」的人員。只取得姓名、科別、職稱，不取得通訊錄帳密、電話或備註。載入後仍需勾選醫師、指定 LINE 群組並確認匯入；既有對照預設略過，同名不同科會提示確認，避免直接自動綁錯群組。照片辨識保留作為補充入口。
+
+此功能沿用 `MEDBASE_API_URL` 與 `MEDBASE_API_KEY`，需先部署支援 `attendingRoster` 的 MedBase 手機 API，再重啟 bot。未更新或連線失敗時會顯示原因，既有對照與轉發仍照原設定運作。
+
+## LINE 自費查詢與複製
+
+- 在 Bot 私訊輸入「自費 人工關節」或「自費項目：院內碼」，直接回傳 Flex 結果卡片。支援名稱、英文名、院內碼、科別等欄位的多關鍵字搜尋；每頁 5 筆，可按下一頁繼續。
+- 每張卡片提供「複製院內碼」「複製名稱＋院內碼」「複製完整資訊」及「MedBase 詳情」。院內碼保留前導零，價格未登錄時明示。複製按鈕需 iOS／Android LINE 14.0 以上，桌機或舊版可使用 MedBase 詳情頁。
+- 首次使用須在 MedBase「設定 → LINE 通知」綁定 LINE。每次搜尋／分頁依綁定帳號查目前 MedBase 自費權限；群組中只提示改至私訊，不自動推送或公開結果。通訊錄中已有 MedBase 帳號的人員即使不在排班名單也可綁定。
+- 輸入「MedBase 查詢」（或「MedBase」），提供自費品項、通訊錄、處方套組、班表、規則備忘錄的網頁入口。主選單和快速選單也有入口；網頁沿用原登入與權限。
+- 後台「MedBase 功能查詢」可逐群組開關。網頁入口只需 `MEDBASE_API_URL`；直接查詢另外需要 `MEDBASE_API_KEY`，MedBase `/api/bot` 的 `items` 操作，以及 GAS 的 `botItems` 唯讀入口（強制服務金鑰、由 GAS 判斷權限）。不傳回備註、廠商或通訊錄私密欄位。
+- 部署順序：更新 GAS 既有 Web App 部署 → 部署 MedBase 手機 API → 重啟 bot。用 `npm test` 驗證 Bot，MedBase 用 `npx vitest run mobile/api/_tests/bot.test.ts mobile/api/_tests/bot-items.test.ts` 驗證 API 與 GAS 的實際程式。

@@ -2,12 +2,15 @@ import crypto from 'crypto';
 import dotenv from 'dotenv';
 import { db } from './db.js';
 import { todayInTaipei, addDays, dayOfWeek } from './util/date.js';
+import { doctorRoster } from './doctor-roster.js';
+import { medbaseLinkCommand } from './medbase-links.js';
+import { selfPayRequest, selfPayResults } from './self-pay.js';
 
 dotenv.config();
 
 // MedBase scheduling system (H:\project\medbase). The bot only talks to its
-// read-only /api/bot entry on medbase-mobile; contacts, credentials and
-// schedule documents are out of reach by design.
+// read-only /api/bot entry on medbase-mobile. The attending roster exposes only
+// names, departments and titles; credentials and other contact fields stay there.
 //
 // LINE pushes are billed per group member (200/month on the free plan), so
 // every query here is answered with a free reply; only swap notices (one
@@ -35,6 +38,17 @@ async function callMedbase(action, args = {}) {
   const data = await res.json().catch(() => ({ ok: false, error: `HTTP ${res.status}` }));
   if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`);
   return data;
+}
+
+export async function getAttendingRoster() {
+  if (!medbaseEnabled) throw new Error('尚未設定 MedBase 串接，請先設定 MEDBASE_API_KEY');
+  try {
+    const result = await callMedbase('attendingRoster');
+    return doctorRoster(result.items);
+  } catch (error) {
+    if (error.message.includes('不允許的操作')) throw new Error('MedBase 尚未提供主治醫師名單，請先部署新版 MedBase 手機 API');
+    throw error;
+  }
 }
 
 // ----------------------------------------------------
@@ -89,6 +103,23 @@ function linkHelp() {
   return `🔗 尚未綁定 MedBase。\n請在 MedBase 手機版「設定 → LINE 通知」按「綁定 LINE」，送出自動帶入的訊息即可。\n${MEDBASE_API_URL}/settings`;
 }
 
+export async function selfPayCommand(request, source, on = () => true) {
+  if (!on('medbase_lookup')) return { silent: true };
+  if (!request.query) return { type: 'text', text: '請輸入「自費 關鍵字」，例如「自費 人工關節」。也可搜尋英文名、院內碼或科別。' };
+  if (request.query.length > 100) return { type: 'text', text: '搜尋關鍵字請限制在 100 字以內。' };
+  if (source.type !== 'user') return { type: 'text', text: '自費查詢依 MedBase 帳號權限提供，請在與「醫院群組助手」的私訊中輸入相同查詢。' };
+  if (!medbaseEnabled) return { type: 'text', text: '自費直接查詢尚未設定 MedBase 串接，請聯絡管理者。' };
+  const me = source.userId && db.medbase_links.get(source.userId);
+  if (!me) return { type: 'text', text: linkHelp() };
+  try {
+    const result = await callMedbase('items', { his: me.his, query: request.query, offset: request.offset });
+    return selfPayResults(result, request, MEDBASE_API_URL);
+  } catch (error) {
+    const message = error.message.includes('不允許的操作') ? '請先更新 MedBase 手機 API 與 GAS。' : error.message;
+    return { type: 'text', text: `自費查詢失敗：${message}` };
+  }
+}
+
 /**
  * Handles MedBase commands. Returns the reply message, or null when `text`
  * is not a MedBase command (the caller then tries its own commands).
@@ -96,6 +127,10 @@ function linkHelp() {
  * whose feature is off gets no reply at all.
  */
 export async function medbaseCommand(text, source, on = () => true) {
+  const itemRequest = selfPayRequest(text);
+  if (itemRequest) return selfPayCommand(itemRequest, source, on);
+  const navigation = medbaseLinkCommand(text, MEDBASE_API_URL);
+  if (navigation) return on('medbase_lookup') ? navigation : { silent: true };
   if (!medbaseEnabled) return null;
   const userId = source.userId;
 
@@ -106,8 +141,8 @@ export async function medbaseCommand(text, source, on = () => true) {
     }
     try {
       const r = await callMedbase('redeem', { code: link[1] });
-      db.medbase_links.upsert(userId, { his: r.his, name: r.name, group: r.group || DEFAULT_MEDBASE_GROUP });
-      return { type: 'text', text: `✅ 已綁定 MedBase：${r.name}（${r.group || DEFAULT_MEDBASE_GROUP}）\n\n可以輸入「我的班」「明天值班」查詢，換班申請與回覆也會私訊通知你。` };
+      db.medbase_links.upsert(userId, { his: r.his, name: r.name, group: r.group ?? DEFAULT_MEDBASE_GROUP });
+      return { type: 'text', text: `✅ 已綁定 MedBase：${r.name}${r.group ? `（${r.group}）` : ''}\n\n可以輸入「自費 關鍵字」查詢並複製品項資料；有排班身分時，也可使用「我的班」。` };
     } catch (error) {
       return { type: 'text', text: `❌ 綁定失敗：${error.message}` };
     }

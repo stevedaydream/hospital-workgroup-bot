@@ -181,7 +181,8 @@
       border: 1px solid var(--line);
       background: var(--surface);
     }
-    .roster-row.off { opacity: 0.55; }
+    .roster-row.off { background: var(--surface-sunken); }
+    .roster-ambiguity { grid-column: 2; color: var(--amber); font-size: 12px; }
 
     /* MedBase integration cards */
     .mb-card {
@@ -262,17 +263,20 @@
       <!-- Section: Import doctors from a roster photo -->
       <div class="admin-section">
         <div class="section-title">
-          <span>📷</span> 從照片匯入醫師名單
+          <span>📋</span> 從醫師名單建立群組對照
         </div>
         <div class="roster-panel">
           <div class="roster-hint">
-            拍下醫師名單（例如分配表下半部的科別名冊），AI 會讀出姓名與科別；
-            請逐一校正錯字、指定每位醫師要轉發的群組，再一次匯入。
-            辨識需要載入模型時約 3～4 分鐘，可以停在此頁等待。
+            以 MedBase 通訊錄中的主治醫師為基礎名單，載入後選擇醫師並指定轉發群組。
+            已有對照會標示並預設略過，載入名單不會更動既有設定。
+            若需補充名單，也可從照片辨識後校正匯入。
           </div>
+          <button class="btn-primary" id="btn-medbase-roster" onclick="loadMedbaseRoster()" style="padding: 12px; font-size: 14px;">
+            載入 MedBase 主治醫師名單
+          </button>
           <input type="file" id="roster-file" accept="image/*" hidden onchange="onRosterFile(this)">
-          <button class="btn-primary" id="btn-roster-pick" onclick="document.getElementById('roster-file').click()" style="padding: 12px; font-size: 14px;">
-            選擇或拍攝名單照片
+          <button class="btn-secondary" id="btn-roster-pick" onclick="document.getElementById('roster-file').click()" style="padding: 12px; font-size: 14px;">
+            從照片補充名單
           </button>
           <div class="roster-status" id="roster-status" role="status"></div>
 
@@ -689,6 +693,37 @@
       el.className = 'roster-status show' + (isError ? ' error' : '');
     }
 
+    function setRosterBusy(busy) {
+      document.getElementById('btn-medbase-roster').disabled = busy;
+      document.getElementById('btn-roster-pick').disabled = busy;
+      document.getElementById('btn-roster-submit').disabled = busy;
+    }
+
+    async function loadMedbaseRoster() {
+      setRosterBusy(true);
+      setRosterStatus('正在載入 MedBase 主治醫師名單…');
+      try {
+        const [response, mappingsResponse] = await Promise.all([
+          fetch('/api/doctor-mappings/medbase-roster'), fetch('/api/doctor-mappings')
+        ]);
+        if (!mappingsResponse.ok) throw new Error('無法確認既有群組對照，請稍後重試');
+        const mappings = await mappingsResponse.json();
+        if (!Array.isArray(mappings)) throw new Error('既有群組對照格式錯誤，請稍後重試');
+        currentMappings = mappings;
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || `HTTP ${response.status}`);
+        if (!Array.isArray(result.doctors)) throw new Error('名單格式錯誤，請稍後重試');
+        showRosterReview(result.doctors);
+        setRosterStatus(result.doctors.length
+          ? `已載入 ${result.doctors.length} 筆主治醫師資料。請勾選醫師並指定群組後匯入。`
+          : 'MedBase 沒有符合的主治醫師。請確認通訊錄職稱已填「主治醫師」或「VS」。');
+      } catch (error) {
+        setRosterStatus('無法載入：' + error.message, true);
+      } finally {
+        setRosterBusy(false);
+      }
+    }
+
     // Phone photos can be 5MB+; the Vercel relay accepts at most 4.5MB per request.
     function downscaleImage(file, maxEdge = 2048) {
       return new Promise((resolve, reject) => {
@@ -722,7 +757,7 @@
       if (!file) return;
 
       const pickBtn = document.getElementById('btn-roster-pick');
-      pickBtn.disabled = true;
+      setRosterBusy(true);
       document.getElementById('roster-review').style.display = 'none';
       clearInterval(rosterPoll);
 
@@ -740,7 +775,7 @@
         pollRoster(jobId, pickBtn);
       } catch (error) {
         setRosterStatus('❌ ' + error.message, true);
-        pickBtn.disabled = false;
+        setRosterBusy(false);
       }
     }
 
@@ -752,13 +787,13 @@
           const job = await res.json();
           if (job.stage === 'done') {
             clearInterval(rosterPoll);
-            pickBtn.disabled = false;
+            setRosterBusy(false);
             pickBtn.textContent = '重新拍攝名單';
             setRosterStatus(`✅ 讀到 ${job.result.doctors.length} 位醫師（${formatClock(job.elapsedSeconds)}，${job.model || 'AI'}）。請校正後指定群組。`);
             showRosterReview(job.result.doctors);
           } else if (job.stage === 'failed') {
             clearInterval(rosterPoll);
-            pickBtn.disabled = false;
+            setRosterBusy(false);
             setRosterStatus('❌ ' + (job.error || '辨識失敗'), true);
           } else {
             const model = job.model ? `（${job.model}）` : '';
@@ -767,7 +802,7 @@
           }
         } catch (error) {
           clearInterval(rosterPoll);
-          pickBtn.disabled = false;
+          setRosterBusy(false);
           setRosterStatus('❌ ' + error.message, true);
         }
       };
@@ -777,11 +812,14 @@
 
     function showRosterReview(doctors) {
       const existing = new Set(currentMappings.map(m => m.match_key));
+      const nameCounts = new Map();
+      doctors.forEach(d => nameCounts.set(d.name, (nameCounts.get(d.name) || 0) + 1));
       rosterRows = doctors.map(d => ({
         name: d.name,
         department: d.department,
         exists: existing.has(d.name),
-        include: !existing.has(d.name),
+        ambiguous: nameCounts.get(d.name) > 1,
+        include: !existing.has(d.name) && nameCounts.get(d.name) === 1,
         groupId: ''
       }));
       document.getElementById('roster-review').style.display = 'grid';
@@ -802,6 +840,7 @@
             ${r.exists ? '<span class="exists-badge">已存在</span>' : ''}
           </div>
           <select class="input-field" onchange="rosterRows[${i}].groupId = this.value" aria-label="${escapeHtml(r.name)} 的轉發群組">${groupOptionsHtml(r.groupId)}</select>
+          ${r.ambiguous ? '<span class="roster-ambiguity">同名，請確認科別</span>' : ''}
         </div>
       `).join('');
       const checked = rosterRows.filter(r => r.include).length;
@@ -810,7 +849,7 @@
     }
 
     function setAllRoster(include) {
-      rosterRows.forEach(r => { r.include = include; });
+      rosterRows.forEach(r => { r.include = include && !r.ambiguous; });
       renderRoster();
     }
 
@@ -855,6 +894,10 @@
       const chosen = rosterRows.filter(r => r.include);
       if (!chosen.length) {
         showToast('沒有勾選任何醫師', true);
+        return;
+      }
+      if (new Set(chosen.map(r => r.name)).size !== chosen.length) {
+        showToast('勾選的名單有同名醫師，請確認科別並僅選擇一筆，再指定群組', true);
         return;
       }
       if (chosen.some(r => !r.name)) {

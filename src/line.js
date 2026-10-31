@@ -5,7 +5,8 @@ import dotenv from 'dotenv';
 import { db } from './db.js';
 import { analyzeCaseImage, analyzeMultipleImages, primaryProviderLabel, modelLabel, isModelLoaded } from './ai.js';
 import { createJob, updateJob, trackModelStage } from './progress.js';
-import { medbaseCommand, medbaseEnabled, MEDBASE_APP_URL } from './medbase.js';
+import { medbaseCommand, medbaseEnabled, MEDBASE_APP_URL, selfPayCommand } from './medbase.js';
+import { selfPayPage } from './self-pay.js';
 import { todayInTaipei, dayOfWeek } from './util/date.js';
 import { featureEnabled } from './features.js';
 
@@ -153,16 +154,16 @@ async function downloadMessageContent(messageId) {
 function travelSummaryText() {
   const today = todayInTaipei();
   const fmt = (date) => `${date.slice(5).replace('-', '/')}(${dayOfWeek(date).slice(1)})`;
-  const where = (t) => t.kind === '長假' ? `長假${t.destination ? ` ${t.destination}` : ''}` : (t.destination || '出國');
+  const where = (t) => t.kind !== '出國' ? `休假・${t.leave_period || '全天'}${t.destination ? ` ${t.destination}` : ''}` : (t.destination || '出國');
   const line = (t) => `• ${t.traveler}｜${where(t)}｜${fmt(t.depart_date)}–${fmt(t.return_date)}` +
     (t.deputy ? `｜代理 ${t.deputy}` : '');
   const trips = db.travels.list();
   const abroad = trips.filter(t => t.depart_date <= today);
   const upcoming = trips.filter(t => t.depart_date > today);
 
-  const parts = ['✈️ 出國與長假'];
-  parts.push(abroad.length ? '\n目前不在（出國／長假）：\n' + abroad.map(line).join('\n') : '\n目前沒有人出國或休長假。');
-  if (upcoming.length) parts.push('\n即將出國／長假：\n' + upcoming.map(line).join('\n'));
+  const parts = ['✈️ 醫師休假與出國'];
+  parts.push(abroad.length ? '\n今日休假／出國：\n' + abroad.map(line).join('\n') : '\n今日沒有休假或出國登記。');
+  if (upcoming.length) parts.push('\n即將休假／出國：\n' + upcoming.map(line).join('\n'));
   parts.push('\n登記或修改：\n' + travelLiffUrl());
   return parts.join('\n');
 }
@@ -175,7 +176,8 @@ function quickMenuText(text, sourceId) {
     medbaseEnabled && on('duty') && item("📋 近期值班", "近期值班"),
     medbaseEnabled && on('my_schedule') && item("🗓 我的班", "我的班"),
     on('calendar') && item("📅 今日行程", "今日行程"),
-    on('travel') && item("✈️ 出國/長假", "出國"),
+    on('travel') && item("休假/出國", "出國"),
+    on('medbase_lookup') && item("MedBase 查詢", "MedBase 查詢"),
     on('menu') && item("📖 主選單", "主選單")
   ].filter(Boolean);
   return items.length ? { type: "text", text, quickReply: { items } } : { type: "text", text };
@@ -186,7 +188,7 @@ function quickMenuText(text, sourceId) {
 const COMMAND_FEATURES = [
   [/^(選單|menu|助手|說明)$|選單$/, 'menu'],
   [/^(\/notes|編輯筆記)$/, 'notes'],
-  [/^(出國|出國登記|誰出國|長假|誰請長假)$/, 'travel'],
+  [/^(出國|出國登記|誰出國|長假|誰請長假|休假|休假登記|誰休假)$/, 'travel'],
   [/^(行事曆|行程|活動|(今日|今天|明日|明天)(行程|活動))$/, 'calendar'],
   [/^(取消轉發|取消發送)$/, 'dispatch'],
   [/^(清空轉發|取消今日轉發)$/, 'image_ai']
@@ -273,7 +275,7 @@ function getMainMenuFlex(sourceId) {
             type: "button",
             action: {
               type: "uri",
-              label: "✈️ 出國與長假登記",
+              label: "✈️ 醫師休假與出國登記",
               uri: travelLiffUrl()
             },
             style: "primary",
@@ -304,6 +306,11 @@ function getMainMenuFlex(sourceId) {
             color: "#be123c",
             height: "sm",
             margin: "md"
+          },
+          on('medbase_lookup') && {
+            type: "button",
+            action: { type: "message", label: "MedBase 功能／自費查詢", text: "MedBase 查詢" },
+            style: "primary", color: "#0f766e", height: "sm", margin: "md"
           },
           // MedBase 排班：查詢用 message action，觸發的是免費的回覆
           ...(medbaseEnabled && (on('duty') || on('my_schedule')) ? [
@@ -937,6 +944,16 @@ export async function handleWebhookEvent(event) {
   const redelivery = event.deliveryContext?.isRedelivery ? ', REDELIVERY' : '';
   console.log(`[Webhook Event] ${new Date().toISOString()} type: ${event.type}, delay: ${delayMs}ms${redelivery}, source: ${JSON.stringify(event.source)}`);
 
+  if (event.type === 'postback' && event.postback?.data?.startsWith('mbitems:')) {
+    const sourceId = event.source.groupId || event.source.roomId || event.source.userId;
+    const request = selfPayPage(event.postback.data);
+    if (!featureEnabled(sourceId, 'medbase_lookup')) return;
+    const message = request ? await selfPayCommand(request, event.source, f => featureEnabled(sourceId, f))
+      : { type: 'text', text: '分頁資料無效，請重新輸入「自費 關鍵字」。' };
+    if (!message.silent) await replyMessage(event.replyToken, message);
+    return;
+  }
+
   if (event.type === 'join') {
     // Keep the join quiet: just the group ID, with quick replies; the full menu comes on 「主選單」
     const sourceId = event.source.groupId || event.source.roomId || event.source.userId;
@@ -981,7 +998,7 @@ export async function handleWebhookEvent(event) {
           type: "text",
           text: `📝 點選此連結編輯注意事項：\n${liffUrl}`
         });
-      } else if (text === '出國' || text === '出國登記' || text === '誰出國' || text === '長假' || text === '誰請長假') {
+      } else if (text === '出國' || text === '出國登記' || text === '誰出國' || text === '長假' || text === '誰請長假' || text === '休假' || text === '休假登記' || text === '誰休假') {
         await replyMessage(event.replyToken, { type: 'text', text: travelSummaryText() });
       } else if (text === '行事曆' || text === '行程' || text === '活動') {
         const liffUrl = `https://liff.line.me/${process.env.LIFF_CALENDAR_ID || 'placeholder_calendar_liff_id'}?groupId=${sourceId}`;

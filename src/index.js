@@ -1,3 +1,5 @@
+import { parseTravel, calendarAbsences } from './travel.js';
+import { todayInTaipei } from './util/date.js';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { serve } from '@hono/node-server';
@@ -10,7 +12,7 @@ import { verifySignature, handleWebhookEvent, pushMessage, GROUP_WINDOW_MS } fro
 import { getJobView, getJob, createJob, updateJob, trackModelStage } from './progress.js';
 import { analyzeRoster, isModelLoaded, modelLabel } from './ai.js';
 import { initializeScheduler, runDailyDispatch, runDailyReminders } from './scheduler.js';
-import { medbaseEnabled, verifyNotifySignature, deliverNotice, DEFAULT_MEDBASE_GROUP } from './medbase.js';
+import { medbaseEnabled, verifyNotifySignature, deliverNotice, DEFAULT_MEDBASE_GROUP, getAttendingRoster } from './medbase.js';
 import { getGroupMemberCount, getPushQuota } from './line.js';
 import { FEATURES, isFeatureKey, effectiveFeatures } from './features.js';
 
@@ -315,6 +317,16 @@ app.get('/api/doctor-mappings', async (c) => {
   }
 });
 
+// Read the MedBase directory's attending roster without changing any mappings.
+app.get('/api/doctor-mappings/medbase-roster', async (c) => {
+  if (!medbaseEnabled) return c.json({ error: '尚未設定 MedBase 串接' }, 503);
+  try {
+    return c.json({ doctors: await getAttendingRoster(), source: 'MedBase 通訊錄' });
+  } catch (error) {
+    return c.json({ error: error.message }, 502);
+  }
+});
+
 // Post a new doctor mapping
 app.post('/api/doctor-mappings', async (c) => {
   const { matchKey, groupName, lineGroupId, type } = await c.req.json();
@@ -551,7 +563,9 @@ app.get('/api/events', async (c) => {
   if (!groupId) return c.json({ error: 'Missing groupId' }, 400);
   try {
     const events = await db.group_events.getAll(groupId);
-    return c.json(events);
+    return c.json(c.req.query('absences') === '1'
+      ? [...events, ...calendarAbsences(db.travels.list({ includePast: true }), events, todayInTaipei())]
+      : events);
   } catch (error) {
     return c.json({ error: error.message }, 500);
   }
@@ -592,41 +606,6 @@ app.delete('/api/events/:id', async (c) => {
 // ----------------------------------------------------
 // Overseas travel registrations (public/travel.html)
 // ----------------------------------------------------
-const YMD = /^\d{4}-\d{2}-\d{2}$/;
-const TRAVEL_PURPOSES = new Set(['開會研習', '休假旅遊', '其他']);
-
-/** Normalises a travel form body; returns { trip } or { error }. */
-function parseTravel(body) {
-  const text = (value, max) => {
-    const s = String(value ?? '').trim().slice(0, max);
-    return s || null;
-  };
-  const trip = {
-    kind: body.kind === '長假' ? '長假' : '出國',
-    traveler: text(body.traveler, 30),
-    destination: text(body.destination, 50),
-    purpose: text(body.purpose, 10),
-    depart_date: text(body.departDate, 10),
-    depart_time: text(body.departTime, 5),
-    depart_flight: text(body.departFlight, 30),
-    return_date: text(body.returnDate, 10),
-    return_time: text(body.returnTime, 5),
-    return_flight: text(body.returnFlight, 30),
-    deputy: text(body.deputy, 30),
-    note: text(body.note, 300)
-  };
-  // Only who and when are required; destination, times and flights can come later.
-  if (!trip.traveler) return { error: '請填寫姓名' };
-  trip.destination = trip.destination || '';
-  if (!YMD.test(trip.depart_date || '') || !YMD.test(trip.return_date || '')) return { error: '請填寫出發與返國日期' };
-  if (trip.return_date < trip.depart_date) return { error: '返國日期不能早於出發日期' };
-  if ((trip.depart_time && !HHMM.test(trip.depart_time)) || (trip.return_time && !HHMM.test(trip.return_time))) {
-    return { error: '時間需為 HH:MM' };
-  }
-  if (trip.purpose && !TRAVEL_PURPOSES.has(trip.purpose)) return { error: '事由選項錯誤' };
-  return { trip };
-}
-
 app.get('/api/travels', (c) => {
   return c.json(db.travels.list({ includePast: c.req.query('past') === '1' }));
 });

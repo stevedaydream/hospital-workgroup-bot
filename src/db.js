@@ -157,6 +157,12 @@ if (!sqlite.prepare('PRAGMA table_info(travel_registrations)').all().some(c => c
   sqlite.exec(`ALTER TABLE travel_registrations ADD COLUMN kind TEXT NOT NULL DEFAULT '出國'`);
 }
 
+// Existing long-leave registrations are full-day leave; keep their dates and audit history.
+if (!sqlite.prepare('PRAGMA table_info(travel_registrations)').all().some(c => c.name === 'leave_period')) {
+  sqlite.exec("ALTER TABLE travel_registrations ADD COLUMN leave_period TEXT NOT NULL DEFAULT '全天'");
+}
+sqlite.prepare("UPDATE travel_registrations SET kind = '休假' WHERE kind = '長假'").run();
+
 // Old rows have no operational value and only make the confirmation UI noisy.
 sqlite
   .prepare('DELETE FROM daily_dispatch_cache WHERE dispatch_date < date(?, ?)')
@@ -420,10 +426,10 @@ export const db = {
       const info = sqlite
         .prepare(
           `INSERT INTO travel_registrations
-             (kind, traveler, destination, purpose, depart_date, depart_time, depart_flight,
+             (kind, leave_period, traveler, destination, purpose, depart_date, depart_time, depart_flight,
               return_date, return_time, return_flight, deputy, note,
               created_by, created_at, updated_by, updated_at)
-           VALUES (@kind, @traveler, @destination, @purpose, @depart_date, @depart_time, @depart_flight,
+           VALUES (@kind, @leave_period, @traveler, @destination, @purpose, @depart_date, @depart_time, @depart_flight,
                    @return_date, @return_time, @return_flight, @deputy, @note,
                    @by, @now, @by, @now)`
         )
@@ -435,7 +441,7 @@ export const db = {
       const changes = sqlite
         .prepare(
           `UPDATE travel_registrations SET
-             kind = @kind, traveler = @traveler, destination = @destination, purpose = @purpose,
+             kind = @kind, leave_period = @leave_period, traveler = @traveler, destination = @destination, purpose = @purpose,
              depart_date = @depart_date, depart_time = @depart_time, depart_flight = @depart_flight,
              return_date = @return_date, return_time = @return_time, return_flight = @return_flight,
              deputy = @deputy, note = @note, updated_by = @by, updated_at = @now

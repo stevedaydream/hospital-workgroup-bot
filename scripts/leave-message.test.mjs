@@ -73,3 +73,35 @@ test('webhook opt-in, durable message deduplication, overlap checks and delete r
   `],{cwd:new URL('..',import.meta.url),env:{...process.env,SQLITE_PATH:':memory:',MEDBASE_API_KEY:''},encoding:'utf8'});
   assert.equal(result.status,0,result.stderr||result.stdout);
 });
+
+test('explicit name aliases use canonical names, retain original text and deduplicate both spellings', () => {
+  const result=spawnSync(process.execPath,['--input-type=module','-e',`
+    import assert from 'node:assert/strict';
+    const {db}=await import('./src/db.js');
+    const {parseLeaveMessage}=await import('./src/leave-message.js');
+    db.person_aliases.set('老甲','何小明','測試維護者');
+    assert.equal(db.person_aliases.resolve('老甲'),'何小明');
+    assert.equal(db.person_aliases.resolve('老乙'),'老乙');
+    assert.throws(()=>db.person_aliases.set('何小明','其他人','test'),/不可串接/);
+    assert.throws(()=>db.person_aliases.set('老乙','老甲','test'),/不可串接/);
+    const parsed=parseLeaveMessage('王小明11/4-11/8請假老甲代看','2026-10-31');
+    const meta=id=>({messageId:id,sourceId:'Ctest',userId:'Utest',by:'測試同仁'});
+    const first=db.travels.importFromLine(parsed.trip,meta('1'));
+    assert.equal(first.registration.deputy,'何小明');
+    assert.match(first.registration.note,/老甲＝何小明/);
+    assert.equal(parsed.trip.deputy,'老甲');
+    assert.equal(db.travels.importFromLine({...parsed.trip,deputy:'何小明'},meta('2')).status,'exists');
+    assert.equal(db.travels.list({includePast:true}).length,1);
+    const {handleWebhookEvent}=await import('./src/line.js');
+    db.group_features.save('Ctest',{leave_autoreg:true},'test');
+    let reply;
+    globalThis.fetch=async(url,options)=>{
+      assert.equal(url,'https://api.line.me/v2/bot/message/reply');
+      reply=JSON.parse(options.body).messages[0].text;
+      return new Response('{}',{status:200});
+    };
+    await handleWebhookEvent({type:'message',timestamp:Date.parse('2026-10-31T01:00:00Z'),replyToken:'test',source:{type:'group',groupId:'Ctest',userId:'Utest'},message:{type:'text',id:'3',text:'王小明11/4-11/8請假老甲代看'}});
+    assert.match(reply,/代理／代看：何小明（老甲）/);
+  `],{cwd:new URL('..',import.meta.url),env:{...process.env,SQLITE_PATH:':memory:',MEDBASE_API_KEY:''},encoding:'utf8'});
+  assert.equal(result.status,0,result.stderr||result.stdout);
+});

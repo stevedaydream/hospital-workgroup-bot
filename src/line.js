@@ -997,10 +997,11 @@ export async function handleWebhookEvent(event) {
           });
           if (result.status === 'duplicate') return;
           const t = result.registration;
+          const deputyAlias = result.status !== 'overlap' && parsed.trip.deputy && parsed.trip.deputy !== t.deputy ? `（${parsed.trip.deputy}）` : '';
           const link = travelLiffUrl() + (travelLiffUrl().includes('?') ? '&' : '?') + `edit=${t.id}`;
           const heading = result.status === 'created' ? '已自動登記休假' : result.status === 'exists' ? '已有相同休假登記，未重複新增' : '已有重疊休假，未新增或覆寫，請確認原登記';
           await replyMessage(event.replyToken, {
-            type: 'text', text: `${heading}\n${t.traveler}｜${t.depart_date}～${t.return_date}｜${t.leave_period}${t.deputy ? `\n代理／代看：${t.deputy}` : ''}\n查看／修改：\n${link}`
+            type: 'text', text: `${heading}\n${t.traveler}｜${t.depart_date}～${t.return_date}｜${t.leave_period}${t.deputy ? `\n代理／代看：${t.deputy}${deputyAlias}` : ''}\n查看／修改：\n${link}`
           });
           return;
         }

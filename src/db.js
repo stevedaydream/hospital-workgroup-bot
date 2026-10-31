@@ -158,6 +158,13 @@ sqlite.exec(`
     registration_id INTEGER REFERENCES travel_registrations(id) ON DELETE SET NULL,
     created_at TEXT NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS person_aliases (
+    alias TEXT PRIMARY KEY,
+    canonical_name TEXT NOT NULL,
+    updated_by TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
 `);
 
 // travel_registrations.kind: 出國 (abroad) or 長假 (long leave). Rows from
@@ -211,6 +218,22 @@ const toDispatchRow = (row) => (row ? { ...row, is_confirmed: row.is_confirmed =
 // Database Interface Methods
 // ----------------------------------------------------
 export const db = {
+  // Explicitly maintained name aliases; never inferred from conversation.
+  person_aliases: {
+    set(alias, canonicalName, by) {
+      alias = String(alias || '').trim();
+      canonicalName = String(canonicalName || '').trim();
+      if (!alias || !canonicalName || alias === canonicalName || alias.length > 30 || canonicalName.length > 30) throw new Error('請提供不同的別名與正式姓名（各 1～30 字）');
+      if (sqlite.prepare('SELECT 1 FROM person_aliases WHERE alias = ? OR canonical_name = ?').get(canonicalName, alias)) throw new Error('別名需直接對應正式姓名，不可串接其他別名');
+      sqlite.prepare(`INSERT INTO person_aliases (alias, canonical_name, updated_by, updated_at) VALUES (?, ?, ?, ?)
+        ON CONFLICT(alias) DO UPDATE SET canonical_name=excluded.canonical_name, updated_by=excluded.updated_by, updated_at=excluded.updated_at`)
+        .run(alias, canonicalName, by, nowIso());
+    },
+    resolve(name) {
+      if (!name) return name;
+      return sqlite.prepare('SELECT canonical_name FROM person_aliases WHERE alias = ?').get(name.trim())?.canonical_name || name;
+    }
+  },
   // --- Users API ---
   users: {
     async getAll() {
@@ -422,11 +445,16 @@ export const db = {
       const normalizeName = name => name.replace(/^NP\s*|醫師$|\s*NP$/giu, '').replace(/\s+/g, '');
       return sqlite.transaction(() => {
         if (sqlite.prepare('SELECT 1 FROM leave_message_imports WHERE line_message_id = ?').get(messageId)) return { status: 'duplicate' };
+        const traveler = db.person_aliases.resolve(trip.traveler);
+        const deputy = db.person_aliases.resolve(trip.deputy);
+        const aliases = [[trip.traveler, traveler], [trip.deputy, deputy]].filter(([original, resolved]) => original && original !== resolved);
+        trip = { ...trip, traveler, deputy,
+          note: aliases.length ? `${trip.note || ''}；姓名別名：${aliases.map(([original, resolved]) => `${original}＝${resolved}`).join('、')}`.slice(0, 300) : trip.note };
         const overlaps = sqlite.prepare("SELECT * FROM travel_registrations WHERE kind IN ('休假', '長假') AND depart_date <= ? AND return_date >= ?")
-          .all(trip.return_date, trip.depart_date).filter(t => normalizeName(t.traveler) === normalizeName(trip.traveler) &&
+          .all(trip.return_date, trip.depart_date).filter(t => normalizeName(db.person_aliases.resolve(t.traveler)) === normalizeName(trip.traveler) &&
             (t.leave_period === '全天' || trip.leave_period === '全天' || t.leave_period === trip.leave_period));
         const same = overlaps.find(t => t.depart_date === trip.depart_date && t.return_date === trip.return_date &&
-          t.leave_period === trip.leave_period && (t.deputy || '') === (trip.deputy || ''));
+          t.leave_period === trip.leave_period && (db.person_aliases.resolve(t.deputy) || '') === (trip.deputy || ''));
         const status = same ? 'exists' : overlaps.length ? 'overlap' : 'created';
         let registration = same || overlaps[0] || null;
         if (status === 'created') {

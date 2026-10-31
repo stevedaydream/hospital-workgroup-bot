@@ -165,6 +165,17 @@ sqlite.exec(`
     updated_by TEXT NOT NULL,
     updated_at TEXT NOT NULL
   );
+  CREATE TABLE IF NOT EXISTS group_person_aliases (
+    source_group_id TEXT NOT NULL, alias TEXT NOT NULL, canonical_name TEXT NOT NULL,
+    updated_by TEXT NOT NULL, updated_at TEXT NOT NULL,
+    PRIMARY KEY (source_group_id, alias)
+  );
+  CREATE TABLE IF NOT EXISTS pending_leave_aliases (
+    token TEXT PRIMARY KEY, line_message_id TEXT UNIQUE NOT NULL,
+    source_group_id TEXT NOT NULL, source_user_id TEXT NOT NULL,
+    trip_json TEXT NOT NULL, choices_json TEXT NOT NULL, created_by TEXT NOT NULL,
+    expires_at INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'pending'
+  );
 `);
 
 // travel_registrations.kind: 出國 (abroad) or 長假 (long leave). Rows from
@@ -220,18 +231,63 @@ const toDispatchRow = (row) => (row ? { ...row, is_confirmed: row.is_confirmed =
 export const db = {
   // Explicitly maintained name aliases; never inferred from conversation.
   person_aliases: {
-    set(alias, canonicalName, by) {
+    set(alias, canonicalName, by, sourceId = null) {
       alias = String(alias || '').trim();
       canonicalName = String(canonicalName || '').trim();
       if (!alias || !canonicalName || alias === canonicalName || alias.length > 30 || canonicalName.length > 30) throw new Error('請提供不同的別名與正式姓名（各 1～30 字）');
+      if (sourceId) {
+        if (this.resolve(canonicalName, sourceId) !== canonicalName || sqlite.prepare('SELECT 1 FROM group_person_aliases WHERE source_group_id = ? AND canonical_name = ?').get(sourceId, alias)) throw new Error('別名需直接對應正式姓名，不可串接其他別名');
+        sqlite.prepare(`INSERT INTO group_person_aliases VALUES (?, ?, ?, ?, ?)
+          ON CONFLICT(source_group_id, alias) DO UPDATE SET canonical_name=excluded.canonical_name, updated_by=excluded.updated_by, updated_at=excluded.updated_at`)
+          .run(sourceId, alias, canonicalName, by, nowIso());
+        return;
+      }
       if (sqlite.prepare('SELECT 1 FROM person_aliases WHERE alias = ? OR canonical_name = ?').get(canonicalName, alias)) throw new Error('別名需直接對應正式姓名，不可串接其他別名');
       sqlite.prepare(`INSERT INTO person_aliases (alias, canonical_name, updated_by, updated_at) VALUES (?, ?, ?, ?)
         ON CONFLICT(alias) DO UPDATE SET canonical_name=excluded.canonical_name, updated_by=excluded.updated_by, updated_at=excluded.updated_at`)
         .run(alias, canonicalName, by, nowIso());
     },
-    resolve(name) {
+    resolve(name, sourceId = null) {
       if (!name) return name;
+      if (sourceId) {
+        const scoped = sqlite.prepare('SELECT canonical_name FROM group_person_aliases WHERE source_group_id = ? AND alias = ?').get(sourceId, name.trim());
+        if (scoped) return scoped.canonical_name;
+      }
       return sqlite.prepare('SELECT canonical_name FROM person_aliases WHERE alias = ?').get(name.trim())?.canonical_name || name;
+    }
+  },
+  pending_leave_aliases: {
+    forMessage(id) { return sqlite.prepare('SELECT token FROM pending_leave_aliases WHERE line_message_id = ?').get(id); },
+    get(token) {
+      const row = sqlite.prepare('SELECT * FROM pending_leave_aliases WHERE token = ?').get(token);
+      return row ? { ...row, trip: JSON.parse(row.trip_json), choices: JSON.parse(row.choices_json) } : null;
+    },
+    create(token, trip, choices, meta) {
+      const inserted = sqlite.prepare(`INSERT OR IGNORE INTO pending_leave_aliases
+        (token, line_message_id, source_group_id, source_user_id, trip_json, choices_json, created_by, expires_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(token, meta.messageId, meta.sourceId, meta.userId, JSON.stringify(trip), JSON.stringify(choices), meta.by, Date.now() + 86400000);
+      return inserted.changes ? this.get(token) : null;
+    },
+    confirm(token, sourceId, userId, selection) {
+      return sqlite.transaction(() => {
+        const pending = this.get(token);
+        if (!pending || pending.expires_at < Date.now()) return { error: '選單已過期，請重新傳送休假公告。' };
+        if (pending.source_group_id !== sourceId || pending.source_user_id !== userId) return { error: '僅原公告發送者可在原群組確認這個代稱。' };
+        if (pending.status !== 'pending') return { error: '這份選單已處理，請查看原登記或重新傳送公告。' };
+        if (selection === 'cancel') {
+          sqlite.prepare("UPDATE pending_leave_aliases SET status='cancelled' WHERE token = ?").run(token);
+          return { cancelled: true };
+        }
+        if (!Number.isInteger(selection) || !pending.choices[selection]) return { error: '人選無效，請重新選擇。' };
+        const name = pending.choices[selection].name;
+        const alias = pending.trip.deputy;
+        const existing = db.person_aliases.resolve(alias, sourceId);
+        if (existing !== alias && existing !== name) return { error: '這個代稱已有其他對應，未覆寫；請先確認正式姓名。' };
+        db.person_aliases.set(alias, name, pending.created_by, sourceId);
+        const result = db.travels.importFromLine(pending.trip, { messageId: pending.line_message_id, sourceId, userId, by: pending.created_by });
+        sqlite.prepare("UPDATE pending_leave_aliases SET status='confirmed' WHERE token = ?").run(token);
+        return { result, trip: pending.trip };
+      })();
     }
   },
   // --- Users API ---
@@ -440,21 +496,22 @@ export const db = {
 
   // --- Overseas travel registrations ---
   travels: {
+    importedMessage(id) { return !!sqlite.prepare('SELECT 1 FROM leave_message_imports WHERE line_message_id = ?').get(id); },
     /** Atomic message deduplication + overlap check + registration. */
     importFromLine(trip, { messageId, sourceId, userId, by }) {
       const normalizeName = name => name.replace(/^NP\s*|醫師$|\s*NP$/giu, '').replace(/\s+/g, '');
       return sqlite.transaction(() => {
         if (sqlite.prepare('SELECT 1 FROM leave_message_imports WHERE line_message_id = ?').get(messageId)) return { status: 'duplicate' };
-        const traveler = db.person_aliases.resolve(trip.traveler);
-        const deputy = db.person_aliases.resolve(trip.deputy);
+        const traveler = db.person_aliases.resolve(trip.traveler, sourceId);
+        const deputy = db.person_aliases.resolve(trip.deputy, sourceId);
         const aliases = [[trip.traveler, traveler], [trip.deputy, deputy]].filter(([original, resolved]) => original && original !== resolved);
         trip = { ...trip, traveler, deputy,
           note: aliases.length ? `${trip.note || ''}；姓名別名：${aliases.map(([original, resolved]) => `${original}＝${resolved}`).join('、')}`.slice(0, 300) : trip.note };
         const overlaps = sqlite.prepare("SELECT * FROM travel_registrations WHERE kind IN ('休假', '長假') AND depart_date <= ? AND return_date >= ?")
-          .all(trip.return_date, trip.depart_date).filter(t => normalizeName(db.person_aliases.resolve(t.traveler)) === normalizeName(trip.traveler) &&
+          .all(trip.return_date, trip.depart_date).filter(t => normalizeName(db.person_aliases.resolve(t.traveler, sourceId)) === normalizeName(trip.traveler) &&
             (t.leave_period === '全天' || trip.leave_period === '全天' || t.leave_period === trip.leave_period));
         const same = overlaps.find(t => t.depart_date === trip.depart_date && t.return_date === trip.return_date &&
-          t.leave_period === trip.leave_period && (db.person_aliases.resolve(t.deputy) || '') === (trip.deputy || ''));
+          t.leave_period === trip.leave_period && (db.person_aliases.resolve(t.deputy, sourceId) || '') === (trip.deputy || ''));
         const status = same ? 'exists' : overlaps.length ? 'overlap' : 'created';
         let registration = same || overlaps[0] || null;
         if (status === 'created') {

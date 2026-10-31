@@ -48,6 +48,8 @@ test('webhook opt-in, durable message deduplication, overlap checks and delete r
     await handleWebhookEvent(event('1'));
     assert.equal(db.travels.list().length,0);assert.equal(replies.length,0);
     db.group_features.save('Ctest',{leave_autoreg:true},'test');
+    db.person_aliases.set('老何','何小明','test');
+    db.person_aliases.set('張醫師','張小明','test');
     await db.users.createOrUpdate('Utest','測試同仁');
     await handleWebhookEvent(event('1'));
     assert.equal(db.travels.list().length,1);
@@ -57,7 +59,7 @@ test('webhook opt-in, durable message deduplication, overlap checks and delete r
     await handleWebhookEvent(event('2'));assert.equal(db.travels.list().length,1);
     assert.match(replies[1].messages[0].text,/已有相同/);
     await handleWebhookEvent({...event('3'),message:{...event('3').message,text:'王小明'+date+'請假張醫師代看'}});
-    assert.equal(db.travels.list().length,1);assert.equal(db.travels.list()[0].deputy,'老何');
+    assert.equal(db.travels.list().length,1);assert.equal(db.travels.list()[0].deputy,'何小明');
     assert.match(replies[2].messages[0].text,/已有重疊/);
     db.travels.remove(record.id);await handleWebhookEvent(event('1'));
     assert.equal(db.travels.list().length,0);

@@ -126,4 +126,5 @@ Bot 只透過 MedBase 手機版的唯讀入口 `https://medbase-mobile.vercel.ap
 - [ ] `curl http://127.0.0.1:3000/api/config` 回傳四個 LIFF ID
 - [ ] `curl https://relay-xi-pied.vercel.app/api/notes` 回 **401**
 - [ ] LINE Console Webhook「Verify」成功
-- [ ] 群組上傳一張 case 大表，啟動訊息顯示「本機 AI」，log 出現 `LOCAL local RAW RESPONSE`（或 `qwen3.6`），`data/hospital.db` 出現 `dispatch_date` 為明天的列
+- [ ] 群組直接上傳閒聊照片，bot 保持安靜；先輸入「辨識照片」，同一人在同一聊天室兩分鐘內上傳 case 大表才開始辨識。10 秒內可續傳，輸入「取消照片辨識」可取消尚未開始的批次。
+- [ ] 啟動訊息顯示「本機 AI」，log 出現 `LOCAL local RAW RESPONSE`（或 `qwen3.6`），`data/hospital.db` 出現 `dispatch_date` 為明天的列

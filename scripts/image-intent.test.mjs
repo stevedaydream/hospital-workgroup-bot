@@ -16,15 +16,15 @@ test('photos offer consent without downloading; consent buttons are sender-bound
     const photo = id => handleWebhookEvent({type:'message',replyToken:'test',source,message:{type:'image',id}});
     await photo('one');
     assert.equal(replies[0].text,'要將圖片新增為公告嗎？不新增無須理會');
-    const data = replies[0].quickReply.items[1].action.data;
     await photo('two');
-    assert.equal(replies.length,1);
+    assert.equal(replies.length,2);
+    const data = replies[1].quickReply.items[1].action.data;
     await handleWebhookEvent({type:'postback',replyToken:'test',source:{...source,userId:'other'},postback:{data}});
     assert.match(replies.at(-1).text,/非您/);
     await handleWebhookEvent({type:'postback',replyToken:'test',source,postback:{data}});
     assert.match(replies.at(-1).text,/完成並建立/);
     await photo('three');
-    assert.match(replies.at(-1).text,/3 張/);
+    assert.match(replies.at(-1).text,/2 張/);
     const cancel = replies.at(-1).quickReply.items[1].action.data;
     await handleWebhookEvent({type:'postback',replyToken:'test',source,postback:{data:cancel}});
     assert.match(replies.at(-1).text,/已取消/);

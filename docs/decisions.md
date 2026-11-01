@@ -51,3 +51,5 @@
 - **P2 原計畫（未開始）**：llama.cpp + Gemma 4 E4B + mmproj、provider 抽象、GBNF、map-reduce、fallback、輕量驗證。
 - **P3 未開始**：`doctors` 主檔與匯入入口、檔案直解、確認卡片。
 - **P4（新增，待排）**：Rich Menu 與 LIFF 介面改版。
+
+- **辨識改用 Qwen3.6（2026-11-02）**：預設與正式環境 `LOCAL_AI_MODELS=qwen3.6`，直接由 Port Monitor 啟動 Qwen3.6，避免先等待 Strata 載入或失敗。Gateway 與既有 Gemini 備援規則維持。

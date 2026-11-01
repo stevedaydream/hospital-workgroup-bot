@@ -1083,14 +1083,14 @@ export async function handleWebhookEvent(event) {
         }
         const user = event.source.userId && await db.users.getByLineUserId(event.source.userId);
         const result = db.general_notes.importFromImages([announcement], [`line-text:${message.id}`], {
-          sourceId, userId: event.source.userId || '', updatedBy: user?.display_name || 'LINE @all 公告'
+          sourceId, userId: event.source.userId || '', updatedBy: user?.display_name || 'LINE @all 公告', reviewOnly: true
         });
         const link = `https://liff.line.me/${LIFF_NOTES_ID}?groupId=${sourceId}`;
         await replyMessage(event.replyToken, {
           type: 'text', text: result.created.length
             ? `📝 已將 @all 訊息記錄為公告／提醒：${announcement.title}\n${link}`
             : result.similar?.length
-              ? `⚠️ 這則 @all 訊息疑似與既有公告重複，已暫存至「待確認公告」7 天，可直接補建，不需重新辨識。\n${link}#note-reviews`
+              ? `📝 @all 訊息已暫存至「待確認公告」7 天，可先 AI 整理、修改草稿，再確認發布。\n${link}#note-reviews`
               : `♻️ 這則 @all 公告已記錄，未重複新增。\n${link}`
         });
         return;

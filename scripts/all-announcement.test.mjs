@@ -24,12 +24,15 @@ test('all mention webhook saves globally once, stages similarities, and respects
     await send('plain','普通聊天', 'Ctest',false);
     assert.equal(replies.length,0);
     await send('one',content);
-    assert.equal((await db.general_notes.getAll()).length,1);
-    assert.equal((await db.general_notes.getAll())[0].updated_by,'LINE @all 公告');
+    assert.equal((await db.general_notes.getAll()).length,0);
+    assert.equal(db.note_reviews.list().length,1);
     await send('one',content);
     await send('two',content,'Cother');
+    assert.equal((await db.general_notes.getAll()).length,0);
+    assert.equal(db.note_reviews.list().length,1);
+    assert.match(replies.at(-1).text,/待確認公告/);
+    db.note_reviews.resolve(db.note_reviews.list()[0].id,'approve','reviewer');
     assert.equal((await db.general_notes.getAll()).length,1);
-    assert.match(replies.at(-1).text,/未重複新增/);
     await send('three',content+'另請留意更新。');
     assert.equal(db.note_reviews.list().length,1);
     assert.match(replies.at(-1).text,/待確認公告/);

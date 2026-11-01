@@ -213,6 +213,13 @@ if (!sqlite.prepare('PRAGMA table_info(travel_registrations)').all().some(c => c
 }
 sqlite.prepare("UPDATE travel_registrations SET kind = '休假' WHERE kind = '長假'").run();
 
+// Additive migration: retain original OCR alongside the editable AI draft.
+for (const column of ['draft_title', 'draft_content']) {
+  if (!sqlite.prepare('PRAGMA table_info(note_reviews)').all().some(c => c.name === column)) {
+    sqlite.exec(`ALTER TABLE note_reviews ADD COLUMN ${column} TEXT`);
+  }
+}
+
 // Old rows have no operational value and only make the confirmation UI noisy.
 sqlite
   .prepare('DELETE FROM daily_dispatch_cache WHERE dispatch_date < date(?, ?)')
@@ -341,7 +348,8 @@ export const db = {
         WHERE json_each.value = ? LIMIT 1`).get(hash);
     },
     /** Persist image identity and compare existing notices atomically, including legacy rows. */
-    importFromImages(notes, imageHashes, { sourceId = '', userId = '', updatedBy = 'AI 晨會多圖整併' } = {}) {
+    importFromImages(notes, imageHashes, { sourceId = '', userId = '', updatedBy = 'AI 晨會多圖整併', reviewOnly = false } = {}) {
+      db.note_reviews.pruneExpired();
       const imageKey = JSON.stringify([...new Set(imageHashes)].sort());
       const normalize = normalizeNotice;
       return sqlite.transaction(() => {
@@ -353,19 +361,25 @@ export const db = {
         const similar = [];
         let skipped = 0;
         for (const note of notes) {
+          const pending = sqlite.prepare("SELECT * FROM note_reviews WHERE status = 'pending'").all()
+            .find(row => normalize(row.content) === normalize(note.content));
+          if (pending) {
+            similar.push({ id: pending.candidate_id, title: pending.title });
+            continue;
+          }
           let row = existing.find(row => normalize(note.content) && normalize(row.content) === normalize(note.content));
           if (row) {
             skipped++;
           } else {
             const candidate = existing.find(row => similarNoticeContent(row.content, note.content));
-            if (candidate) {
+            if (candidate || reviewOnly) {
               // Do not save an image mapping: a similarity match needs review
               // and is not proof that the new image is identical.
               sqlite.prepare(`INSERT INTO note_reviews (title, content, candidate_id, image_key, source_group_id, source_user_id, created_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(image_key, title, content) DO UPDATE SET status = 'pending', candidate_id = excluded.candidate_id,
-                  resolved_at = NULL, resolved_by = NULL`).run(note.title, note.content, candidate.id, imageKey, sourceId, userId, nowIso());
-              similar.push({ id: candidate.id, title: candidate.title });
+                  resolved_at = NULL, resolved_by = NULL`).run(note.title, note.content, candidate?.id || null, imageKey, sourceId, userId, nowIso());
+              similar.push({ id: candidate?.id || null, title: candidate?.title || note.title });
               continue;
             }
             const info = sqlite.prepare('INSERT INTO general_notes (title, content, updated_at, updated_by) VALUES (?, ?, ?, ?)')
@@ -421,7 +435,12 @@ export const db = {
         WHERE r.status = 'pending' ORDER BY r.id DESC`).all()
         .map(row => ({ ...row, expires_at: new Date(Date.parse(row.created_at) + 7 * 24 * 60 * 60 * 1000).toISOString() }));
     },
-    resolve(id, action, by) {
+    saveDraft(id, draft) {
+      this.pruneExpired();
+      return sqlite.prepare("UPDATE note_reviews SET draft_title = ?, draft_content = ? WHERE id = ? AND status = 'pending'")
+        .run(draft.title, draft.content, id).changes > 0;
+    },
+    resolve(id, action, by, draft = null) {
       if (!['approve', 'dismiss'].includes(action)) throw new Error('無效操作');
       this.pruneExpired();
       return sqlite.transaction(() => {
@@ -432,7 +451,7 @@ export const db = {
         if (action === 'approve') {
           // Human confirmation deliberately bypasses OCR and similarity checks.
           noteId = Number(sqlite.prepare('INSERT INTO general_notes (title, content, updated_at, updated_by) VALUES (?, ?, ?, ?)')
-            .run(row.title, row.content, nowIso(), by).lastInsertRowid);
+            .run(draft?.title || row.title, draft?.content || row.content, nowIso(), by).lastInsertRowid);
           sqlite.prepare('INSERT OR IGNORE INTO note_image_imports (image_key, note_id) VALUES (?, ?)').run(row.image_key, noteId);
         }
         const status = action === 'approve' ? 'approved' : 'dismissed';

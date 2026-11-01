@@ -13,6 +13,9 @@
     .review-item h3 { font-size: 16px; overflow-wrap: anywhere; }
     .review-content { white-space: pre-wrap; overflow-wrap: anywhere; }
     .review-countdown { color: var(--ink-2); font-size: 13px; font-variant-numeric: tabular-nums; }
+    .review-draft label { display: block; margin-top: 10px; font-weight: 600; }
+    .review-draft input, .review-draft textarea { box-sizing: border-box; width: 100%; margin-top: 6px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: var(--surface); font: inherit; }
+    .review-draft textarea { min-height: 200px; resize: vertical; }
     .review-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
     .review-actions button { flex: 1 1 130px; min-height: 44px; padding: 10px 12px; }
     .review-actions button:disabled { opacity: .6; cursor: wait; }
@@ -198,7 +201,7 @@
 
     <details id="note-reviews" class="review-panel">
       <summary id="review-summary">待確認公告</summary>
-      <p>疑似重複的辨識結果保留 7 天，逾期自動清除。補建使用原文字，不需重新辨識。</p>
+      <p>@All 與疑似重複公告保留 7 天。可先 AI 整理、修改草稿，再確認發布；原文會保留供核對。</p>
       <div id="review-list" aria-live="polite">讀取中…</div>
     </details>
 
@@ -494,16 +497,24 @@
         const reviews = await response.json();
         document.getElementById('review-summary').textContent = `待確認公告（${reviews.length}）`;
         list.innerHTML = reviews.length ? reviews.map(item => `
-          <article class="review-item">
+          <article class="review-item" data-review-id="${item.id}">
             <h3>${escapeHtml(item.title)}</h3>
             <p class="review-countdown" data-expires="${escapeHtml(item.expires_at)}" role="timer"></p>
-            <p class="review-content">${escapeHtml(item.content)}</p>
-            <details><summary>比對既有公告：${escapeHtml(item.candidate_title || '原公告已刪除')}</summary>
+            <details ${item.draft_content ? '' : 'open'}><summary>原文</summary><p class="review-content">${escapeHtml(item.content)}</p></details>
+            ${item.draft_content ? `<div class="review-draft">
+              <p>AI 整理草稿，請核對藥名、劑量、時間與限制後發布。</p>
+              <label for="draft-title-${item.id}">草稿標題</label><input id="draft-title-${item.id}" value="${escapeHtml(item.draft_title)}">
+              <label for="draft-content-${item.id}">草稿內容</label><textarea id="draft-content-${item.id}">${escapeHtml(item.draft_content)}</textarea>
+            </div>` : ''}
+            ${item.candidate_id || item.candidate_content ? `<details><summary>比對既有公告：${escapeHtml(item.candidate_title || '原公告已刪除')}</summary>
               <p class="review-content">${escapeHtml(item.candidate_content || '可直接核對上方待確認內容。')}</p>
-            </details>
+            </details>` : ''}
+            <p class="review-ai-status" role="status"></p>
             <div class="review-actions">
-              <button class="btn-primary" onclick="resolveReview(${item.id}, 'approve', this)">補建公告</button>
-              <button class="btn-secondary" onclick="resolveReview(${item.id}, 'dismiss', this)">確認重複，捨棄</button>
+              <button class="btn-secondary" onclick="organizeReview(${item.id}, this)">${item.draft_content ? '重新 AI 整理' : 'AI 整理'}</button>
+              ${item.draft_content ? `<button class="btn-primary" onclick="resolveReview(${item.id}, 'approve', this, true)">確認發布草稿</button>` : ''}
+              <button class="btn-secondary" onclick="resolveReview(${item.id}, 'approve', this)">原文直接補建</button>
+              <button class="btn-secondary" onclick="resolveReview(${item.id}, 'dismiss', this)">捨棄</button>
             </div>
           </article>`).join('') : '<p>目前沒有待確認公告。</p>';
         if (location.hash === '#note-reviews') document.getElementById('note-reviews').open = true;
@@ -527,12 +538,38 @@
     }
     setInterval(updateReviewCountdowns, 1000);
 
-    async function resolveReview(id, action, button) {
+    async function organizeReview(id, button) {
+      const article = button.closest('.review-item');
+      const status = article.querySelector('.review-ai-status');
+      const buttons = article.querySelectorAll('button');
+      buttons.forEach(item => item.disabled = true);
+      status.textContent = 'AI 整理中，原文已保存，完成後會顯示草稿，不會自動發布。';
+      try {
+        const started = await fetch(`/api/note-reviews/${id}/organize`, { method: 'POST' });
+        if (!started.ok) throw new Error('無法開始整理，公告可能已處理或到期。');
+        for (;;) {
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          if (!article.isConnected) return;
+          const response = await fetch(`/api/note-reviews/${id}/organize`, { cache: 'no-store' });
+          if (!response.ok) throw new Error('查詢失敗，請重新開啟目錄；原文仍保留。');
+          const result = await response.json();
+          if (result.status === 'running') continue;
+          if (result.status !== 'done') throw new Error(result.error || '整理已中斷，可重新整理；原文仍保留。');
+          await fetchNoteReviews();
+          return;
+        }
+      } catch (error) { status.textContent = error.message; }
+      finally { buttons.forEach(item => item.disabled = false); updateReviewCountdowns(); }
+    }
+
+    async function resolveReview(id, action, button, useDraft = false) {
       const buttons = button.closest('.review-actions').querySelectorAll('button');
+      const draft = useDraft ? { title: document.getElementById(`draft-title-${id}`).value.trim(), content: document.getElementById(`draft-content-${id}`).value.trim() } : null;
+      if (draft && (!draft.title || !draft.content)) { showToast('請填寫草稿標題與內容', true); return; }
       buttons.forEach(item => item.disabled = true);
       try {
         const response = await fetch(`/api/note-reviews/${id}/resolve`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action })
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, draft })
         });
         if (!response.ok) throw new Error('處理失敗，資料仍保留，請稍後重試。');
         const result = await response.json();

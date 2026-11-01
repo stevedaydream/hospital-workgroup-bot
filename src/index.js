@@ -15,6 +15,7 @@ import { initializeScheduler, runDailyDispatch, runDailyReminders } from './sche
 import { medbaseEnabled, verifyNotifySignature, deliverNotice, DEFAULT_MEDBASE_GROUP, getAttendingRoster } from './medbase.js';
 import { getGroupMemberCount, getPushQuota } from './line.js';
 import { FEATURES, isFeatureKey, effectiveFeatures } from './features.js';
+import { startReviewAi, reviewAiStatus } from './review-ai.js';
 
 dotenv.config();
 
@@ -231,10 +232,16 @@ app.get('/api/users', async (c) => {
 
 // Fetch all ward notes (Directory List)
 app.get('/api/note-reviews', c => c.json(db.note_reviews.list()));
+app.post('/api/note-reviews/:id/organize', c => {
+  const result = startReviewAi(c.req.param('id'));
+  return result ? c.json(result, 202) : c.json({ error: '公告已處理或到期' }, 404);
+});
+app.get('/api/note-reviews/:id/organize', c => c.json(reviewAiStatus(c.req.param('id'))));
 app.post('/api/note-reviews/:id/resolve', async c => {
-  const { action } = await c.req.json().catch(() => ({}));
+  const { action, draft } = await c.req.json().catch(() => ({}));
   if (!['approve', 'dismiss'].includes(action)) return c.json({ error: '無效操作' }, 400);
-  const result = db.note_reviews.resolve(c.req.param('id'), action, c.get('displayName') || '未知人員');
+  if (draft && (typeof draft.title !== 'string' || typeof draft.content !== 'string' || !draft.title.trim() || !draft.content.trim())) return c.json({ error: '請填寫草稿標題與內容' }, 400);
+  const result = db.note_reviews.resolve(c.req.param('id'), action, c.get('displayName') || '未知人員', draft);
   return result ? c.json(result) : c.json({ error: '找不到待確認公告' }, 404);
 });
 

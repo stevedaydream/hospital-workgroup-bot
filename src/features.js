@@ -12,7 +12,7 @@ import { db } from './db.js';
 // are, and everything is on in a 1:1 chat.
 export const FEATURES = [
   { key: 'menu', label: '選單／主選單', hint: '「選單」「主選單」「說明」等指令', defaultOn: true },
-  { key: 'image_ai', label: '照片 AI 辨識', hint: '先輸入「辨識照片」再上傳；可「取消照片辨識」；含「取消今日轉發」', defaultOn: true },
+  { key: 'image_ai', label: '照片 AI 辨識', hint: '傳圖後點選單張或連續圖片新增公告，未點選不處理；分配表／行程先輸入「辨識照片」；含「取消今日轉發」', defaultOn: true },
   { key: 'dispatch', label: '接收 Case 分配表轉發', hint: '每日 07:30 推播分配表到此群組；含「取消轉發」', defaultOn: true },
   { key: 'calendar', label: '行事曆', hint: '「行事曆」「今日行程」「明日行程」', defaultOn: true },
   { key: 'notes', label: '注意事項', hint: '「編輯筆記」連結與選單按鈕', defaultOn: true },
@@ -28,6 +28,8 @@ const FEATURE_KEYS = new Set(FEATURES.map(f => f.key));
 const DEFAULT_ON = Object.fromEntries(FEATURES.map(f => [f.key, f.defaultOn]));
 
 export const isFeatureKey = (key) => FEATURE_KEYS.has(key);
+
+export const disabledFeatureMessage = feature => ({ type: 'text', text: `${FEATURES.find(f => f.key === feature)?.label || feature}功能目前開發測試中...` });
 
 const isConfigurable = (sourceId) => typeof sourceId === 'string' && /^[CR]/.test(sourceId);
 

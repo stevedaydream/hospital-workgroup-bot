@@ -38,6 +38,7 @@ export async function runDailyDispatch() {
 
     let sendCount = 0;
     for (const groupId of Object.keys(uniqueDispatches)) {
+      if (!featureEnabled(groupId, 'dispatch')) continue;
       const dispatch = uniqueDispatches[groupId];
       const imageUrl = `${BASE_URL}/images/${dispatch.source_image_message_id}.jpg`;
       

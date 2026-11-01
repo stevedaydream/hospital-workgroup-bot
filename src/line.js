@@ -3,23 +3,25 @@ import fs from 'fs/promises';
 import path from 'path';
 import dotenv from 'dotenv';
 import { db } from './db.js';
-import { analyzeCaseImage, analyzeMultipleImages, primaryProviderLabel, modelLabel, isModelLoaded } from './ai.js';
+import { offerImage, chooseImage, cancelImages } from './image-choice.js';
+import { analyzeCaseImage, analyzeMultipleImages, modelLabel, isModelLoaded } from './ai.js';
 import { createJob, updateJob, trackModelStage } from './progress.js';
 import { medbaseCommand, medbaseEnabled, MEDBASE_APP_URL, selfPayCommand } from './medbase.js';
 import { selfPayPage } from './self-pay.js';
 import { parseLeaveMessage } from './leave-message.js';
 import { prepareLeaveAlias, leaveAliasPostback, leaveRegistrationReply } from './leave-alias.js';
 import { todayInTaipei, dayOfWeek } from './util/date.js';
-import { featureEnabled } from './features.js';
+import { featureEnabled, disabledFeatureMessage as disabledMessage } from './features.js';
 
 dotenv.config();
 
-// In-memory sessions to debounce and group consecutive image uploads
+// Confirmed recognition jobs; unconfirmed images live in image-choice.js.
 const imageGroupSessions = new Map();
 const imageUploadIntents = new Map();
 const IMAGE_INTENT_MS = 2 * 60 * 1000;
 const imageSessionKey = (sourceId, userId) => JSON.stringify([sourceId, userId]);
-export const GROUP_WINDOW_MS = 10000; // 10-second wait window for consecutive uploads
+export const GROUP_WINDOW_MS = 0; // Recognition begins only after explicit confirmation.
+
 
 const LINE_CHANNEL_ACCESS_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN;
 const LINE_CHANNEL_SECRET = process.env.LINE_CHANNEL_SECRET;
@@ -786,6 +788,11 @@ async function triggerBatchProcess(sourceId, sessionKey) {
 
   imageGroupSessions.delete(sessionKey);
   imageUploadIntents.delete(sessionKey);
+  if (!featureEnabled(sourceId, 'image_ai')) {
+    updateJob(session.job, { stage: 'done', resultLabel: '功能已關閉' });
+    await pushMessage(sourceId, disabledMessage('image_ai'));
+    return;
+  }
   console.log(`[Batch Process] Starting processing of ${session.buffers.length} images for ${sourceId}`);
 
   // Use the last uploaded image message ID as the reference
@@ -802,7 +809,7 @@ async function triggerBatchProcess(sourceId, sessionKey) {
     updateJob(job, { stage: 'recognizing', imageCount: session.buffers.length });
 
     let ocrResult;
-    if (session.buffers.length === 1) {
+    if (!session.announcementOnly && session.buffers.length === 1) {
       // Single image: Classify and process
       ocrResult = await analyzeCaseImage(session.buffers[0], onAttempt);
     } else {
@@ -810,6 +817,12 @@ async function triggerBatchProcess(sourceId, sessionKey) {
       ocrResult = await analyzeMultipleImages(session.buffers, onAttempt);
     }
     stage.stop();
+
+    if (!featureEnabled(sourceId, 'image_ai')) {
+      updateJob(job, { stage: 'done', resultLabel: '功能已關閉' });
+      await pushMessage(sourceId, disabledMessage('image_ai'));
+      return;
+    }
 
     console.log('Batch Analysis Result:', ocrResult);
 
@@ -824,18 +837,18 @@ async function triggerBatchProcess(sourceId, sessionKey) {
 
     if (ocrResult.type === 'WARD_NOTE') {
       // --- 🔴 WARD_NOTE Pipeline: Auto-Create Notices ---
-      const addedNotes = [];
-      if (ocrResult.notes && Array.isArray(ocrResult.notes)) {
-        for (const note of ocrResult.notes) {
-          const created = await db.general_notes.create(note.title, note.content, 'AI 晨會多圖整併');
-          addedNotes.push(created);
-        }
+      const notes = Array.isArray(ocrResult.notes) ? ocrResult.notes : [];
+      const { created: addedNotes, skipped } = db.general_notes.importFromImages(
+        notes, session.buffers.map(buffer => crypto.createHash('sha256').update(buffer).digest('hex'))
+      );
+      if (skipped > 0) {
+        resultMessages.push({ type: 'text', text: `♻️ 已略過 ${skipped} 筆重複公告，未重複新增。` });
       }
 
       if (addedNotes.length > 0) {
         const flexNotesCard = getAutoNotesAddedFlex(addedNotes, sourceId);
         resultMessages.push(flexNotesCard);
-      } else {
+      } else if (skipped === 0) {
         resultMessages.push({
           type: "text",
           text: "⚠️ AI 判斷此圖片為公告，但未能解析出任何具體公告項目。"
@@ -896,6 +909,7 @@ async function triggerBatchProcess(sourceId, sessionKey) {
         for (const docName of ocrResult.doctors) {
           const mappings = await db.doctor_group_mapping.getByMatchKey(docName);
           for (const map of mappings) {
+            if (!featureEnabled(map.line_group_id, 'dispatch')) continue;
             if (map.type === 'DIRECT') {
               await db.daily_dispatch_cache.add(map.line_group_id, messageId, true);
               dispatchedGroups.push(`${map.group_name} (${docName}醫師)`);
@@ -908,7 +922,7 @@ async function triggerBatchProcess(sourceId, sessionKey) {
       if (ocrResult.departments && Array.isArray(ocrResult.departments)) {
         for (const deptCode of ocrResult.departments) {
           const mappings = await db.doctor_group_mapping.getByMatchKey(deptCode);
-          const flexibleMaps = mappings.filter(m => m.type === 'FLEXIBLE');
+          const flexibleMaps = mappings.filter(m => m.type === 'FLEXIBLE' && featureEnabled(m.line_group_id, 'dispatch'));
           
           if (flexibleMaps.length > 0) {
             if (deptCode.toUpperCase() === 'URO') {
@@ -951,6 +965,17 @@ async function triggerBatchProcess(sourceId, sessionKey) {
 // Webhook Web Entry
 // ----------------------------------------------------
 export async function handleWebhookEvent(event) {
+  const sourceIdForGate = event.source?.groupId || event.source?.roomId || event.source?.userId;
+  const gatedFeature = event.type === 'message'
+    ? (event.message?.type === 'image' ? 'image_ai' : event.message?.type === 'text' ? commandFeature(event.message.text.trim()) : null)
+    : event.type === 'postback'
+      ? (event.postback?.data?.startsWith('imagechoice:') ? 'image_ai' : event.postback?.data?.startsWith('mbitems:') ? 'medbase_lookup' : event.postback?.data?.startsWith('leavealias:') ? 'leave_autoreg' : null)
+      : null;
+  if (gatedFeature && !featureEnabled(sourceIdForGate, gatedFeature)) {
+    if (gatedFeature === 'image_ai') cancelImages(sourceIdForGate, event.source.userId);
+    await replyMessage(event.replyToken, disabledMessage(gatedFeature));
+    return;
+  }
   // Delay from the user sending to us receiving; a redelivery means LINE's
   // first attempt failed, which is where long waits usually come from.
   const delayMs = event.timestamp ? Date.now() - event.timestamp : null;
@@ -962,6 +987,35 @@ export async function handleWebhookEvent(event) {
     if (!featureEnabled(sourceId, 'travel') || !featureEnabled(sourceId, 'leave_autoreg')) return;
     const result = leaveAliasPostback(event.postback.data, event.source, travelLiffUrl());
     if (!result.silent) await replyMessage(event.replyToken, result);
+    return;
+  }
+
+  if (event.type === 'postback' && event.postback?.data?.startsWith('imagechoice:')) {
+    const sourceId = event.source.groupId || event.source.roomId || event.source.userId;
+    if (!featureEnabled(sourceId, 'image_ai') || !event.source.userId) return;
+    const choice = chooseImage(event.postback.data, sourceId, event.source.userId);
+    if (choice.message) {
+      await replyMessage(event.replyToken, choice.message);
+      return;
+    }
+    const sessionKey = imageSessionKey(sourceId, event.source.userId);
+    const job = createJob();
+    await replyMessage(event.replyToken, { type: 'text', text: `已開始處理 ${choice.ids.length} 張圖片。\n即時進度：${BASE_URL}/progress.html?job=${job.id}` });
+    try {
+      const buffers = [];
+      for (const id of choice.ids) {
+        const buffer = await downloadMessageContent(id);
+        buffers.push(buffer);
+        if (!choice.announcementOnly) await fs.writeFile(path.join(IMAGES_DIR, `${id}.jpg`), buffer);
+      }
+      // Each confirmation gets its own key so parallel jobs cannot overwrite one another.
+      const jobKey = `${sessionKey}:${job.id}`;
+      imageGroupSessions.set(jobKey, { buffers, messageIds: choice.ids, job, announcementOnly: choice.announcementOnly });
+      await triggerBatchProcess(sourceId, jobKey);
+    } catch (error) {
+      updateJob(job, { stage: 'failed', error: error.message });
+      await pushMessage(sourceId, { type: 'text', text: '圖片讀取失敗，請重新傳送並選擇新增公告。' });
+    }
     return;
   }
 
@@ -999,10 +1053,6 @@ export async function handleWebhookEvent(event) {
       const text = message.text.trim();
       const sourceId = event.source.groupId || event.source.roomId || event.source.userId;
 
-      // Commands of a feature switched off for this group are ignored silently.
-      const feature = commandFeature(text);
-      if (feature && !featureEnabled(sourceId, feature)) return;
-
       if (event.source.type === 'group' && event.source.userId && message.id &&
           featureEnabled(sourceId, 'travel') && featureEnabled(sourceId, 'leave_autoreg')) {
         const parsed = parseLeaveMessage(text, todayInTaipei(new Date(event.timestamp || Date.now())));
@@ -1031,6 +1081,7 @@ export async function handleWebhookEvent(event) {
       if (text === '辨識照片' || text === '取消照片辨識') {
         if (!event.source.userId) return;
         const key = imageSessionKey(sourceId, event.source.userId);
+        cancelImages(sourceId, event.source.userId);
         const session = imageGroupSessions.get(key);
         if (session) {
           clearTimeout(session.timer);
@@ -1046,7 +1097,7 @@ export async function handleWebhookEvent(event) {
         await replyMessage(event.replyToken, {
           type: 'text',
           text: text === '辨識照片'
-            ? '📷 請在兩分鐘內上傳分配表、公告或行事曆照片。只接收您在此聊天室上傳的照片，連續照片可在 10 秒內續傳。輸入「取消照片辨識」可取消尚未開始的辨識。'
+            ? '請傳送圖片後點選用途：公告選「單張新增」或「連續圖片」；分配表或行程選「辨識分配表／行程」。未點選不會處理。'
             : '已取消等待上傳及尚未開始的照片辨識。'
         });
       } else if (text === '選單') {
@@ -1165,84 +1216,10 @@ export async function handleWebhookEvent(event) {
 
     if (message.type === 'image') {
       const sourceId = event.source.groupId || event.source.roomId || event.source.userId;
-      const messageId = message.id;
-      if (!featureEnabled(sourceId, 'image_ai')) return;
-      if (!event.source.userId) return;
-      const sessionKey = imageSessionKey(sourceId, event.source.userId);
-      const expires = imageUploadIntents.get(sessionKey);
-      if (!expires || expires <= Date.now()) {
-        imageUploadIntents.delete(sessionKey);
-        return;
-      }
-      imageUploadIntents.set(sessionKey, Date.now() + GROUP_WINDOW_MS);
-
-      try {
-        // 1. Download image
-        const imageBuffer = await downloadMessageContent(messageId);
-
-        // 2. Cache image locally
-        const imageFileName = `${messageId}.jpg`;
-        const localImagePath = path.join(IMAGES_DIR, imageFileName);
-        await fs.writeFile(localImagePath, imageBuffer);
-        console.log(`Image saved to ${localImagePath}`);
-
-        // 3. Debounce and Group Consecutive Image Uploads
-        if (!imageGroupSessions.has(sessionKey)) {
-          // First image of the batch
-          const session = {
-            messageIds: [messageId],
-            buffers: [imageBuffer],
-            timer: null,
-            job: createJob()
-          };
-          imageGroupSessions.set(sessionKey, session);
-
-          // Replies are free; this one carries the progress link so nothing
-          // else needs to be pushed until the result is ready.
-          await replyMessage(event.replyToken, {
-            type: "text",
-            text: `📥 已收到第 1 張照片，10 秒內再上傳的照片會一起整併辨識。
-
-⚙️ 接著使用${primaryProviderLabel}辨識，模型需要載入時約 3～4 分鐘。
-⏱ 即時進度：${BASE_URL}/progress.html?job=${session.job.id}`
-          });
-
-          // Set 10s timer to trigger batch processing
-          session.timer = setTimeout(() => {
-            triggerBatchProcess(sourceId, sessionKey);
-          }, GROUP_WINDOW_MS);
-
-        } else {
-          // Subsequent image uploaded within 10s window
-          const session = imageGroupSessions.get(sessionKey);
-          session.messageIds.push(messageId);
-          session.buffers.push(imageBuffer);
-
-          // Reset the timer (sliding window debounce)
-          clearTimeout(session.timer);
-
-          updateJob(session.job, { imageCount: session.buffers.length, stage: 'collecting' });
-
-          // Each upload has its own (free) reply token.
-          await replyMessage(event.replyToken, {
-            type: "text",
-            text: `📥 續傳成功！已收到第 ${session.buffers.length} 張連續照片，請繼續上傳，或等待 10 秒後開始分析...`
-          });
-
-          session.timer = setTimeout(() => {
-            triggerBatchProcess(sourceId, sessionKey);
-          }, GROUP_WINDOW_MS);
-        }
-
-      } catch (error) {
-        console.error('Error processing uploaded image:', error);
-        if (sourceId) {
-          await pushMessage(sourceId, {
-            type: "text",
-            text: `❌ 圖片上傳暫存失敗，錯誤原因：${error.message}`
-          });
-        }
-      }
+      if (!featureEnabled(sourceId, 'image_ai') || !event.source.userId) return;
+      const key = imageSessionKey(sourceId, event.source.userId);
+      const prompt = offerImage(sourceId, event.source.userId, message.id, (imageUploadIntents.get(key) || 0) > Date.now());
+      if (prompt) await replyMessage(event.replyToken, prompt);
     }
   }
 }

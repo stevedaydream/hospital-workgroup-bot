@@ -131,3 +131,9 @@ curl "http://localhost:3000/api/test-cron?key=$ADMIN_API_KEY"
 - 輸入「MedBase 查詢」（或「MedBase」），提供自費品項、通訊錄、處方套組、班表、規則備忘錄的網頁入口。主選單和快速選單也有入口；網頁沿用原登入與權限。
 - 後台「MedBase 功能查詢」可逐群組開關。網頁入口只需 `MEDBASE_API_URL`；直接查詢另外需要 `MEDBASE_API_KEY`，MedBase `/api/bot` 的 `items` 操作，以及 GAS 的 `botItems` 唯讀入口（強制服務金鑰、由 GAS 判斷權限）。不傳回備註、廠商或通訊錄私密欄位。
 - 部署順序：更新 GAS 既有 Web App 部署 → 部署 MedBase 手機 API → 重啟 bot。用 `npm test` 驗證 Bot，MedBase 用 `npx vitest run mobile/api/_tests/bot.test.ts mobile/api/_tests/bot-items.test.ts` 驗證 API 與 GAS 的實際程式。
+
+### 圖片新增公告
+
+傳圖後會顯示「要將圖片新增為公告嗎？不新增無須理會」，點選「單張新增」才開始處理；「連續圖片」可收集同一人在同一聊天室的圖片，按「完成並建立」後處理。五分鐘未操作會過期。未確認不下載圖片或呼叫 AI。圖片指紋及公告文字會用於去重，重傳不會重複新增。
+
+分配表或行程沿用「辨識照片」入口，傳圖後再點「辨識分配表／行程」。群組功能關閉後，使用者觸發會收到「XXX功能目前開發測試中...」；排程轉發直接跳過已關閉的群組。

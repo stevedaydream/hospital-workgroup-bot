@@ -3,9 +3,8 @@ import { SINGLE_IMAGE_PROMPT, MULTI_IMAGE_PROMPT, ROSTER_PROMPT, normalizeSingle
 
 dotenv.config();
 
-// Local models on this PC, tried in the order of LOCAL_AI_MODELS: Strata
-// (`local`) normally, Qwen3.6 when Strata cannot get the VRAM -- the two share
-// the GPUs and never run together.
+// Local models on this PC, tried in the order of LOCAL_AI_MODELS.
+// Default to Qwen3.6 directly to avoid waiting for a Strata cold start.
 //
 // Two routes, same OpenAI-compatible API:
 // 1. Port Monitor (43922, needs a project key). It starts a model that is not
@@ -14,7 +13,7 @@ dotenv.config();
 // 2. Local AI Gateway (4000). Its providers do not autostart, so it only
 //    serves whichever model is already running. Used when Port Monitor is not
 //    configured, not running, or could not serve any model.
-const LOCAL_AI_MODELS = (process.env.LOCAL_AI_MODELS || 'local,qwen3.6')
+const LOCAL_AI_MODELS = (process.env.LOCAL_AI_MODELS || 'qwen3.6')
   .split(',').map(m => m.trim()).filter(Boolean);
 
 const routes = [];

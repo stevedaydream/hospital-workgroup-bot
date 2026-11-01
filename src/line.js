@@ -16,6 +16,9 @@ dotenv.config();
 
 // In-memory sessions to debounce and group consecutive image uploads
 const imageGroupSessions = new Map();
+const imageUploadIntents = new Map();
+const IMAGE_INTENT_MS = 2 * 60 * 1000;
+const imageSessionKey = (sourceId, userId) => JSON.stringify([sourceId, userId]);
 export const GROUP_WINDOW_MS = 10000; // 10-second wait window for consecutive uploads
 
 const LINE_CHANNEL_ACCESS_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN;
@@ -193,7 +196,7 @@ const COMMAND_FEATURES = [
   [/^(出國|出國登記|誰出國|長假|誰請長假|休假|休假登記|誰休假)$/, 'travel'],
   [/^(行事曆|行程|活動|(今日|今天|明日|明天)(行程|活動))$/, 'calendar'],
   [/^(取消轉發|取消發送)$/, 'dispatch'],
-  [/^(清空轉發|取消今日轉發)$/, 'image_ai']
+  [/^(辨識照片|取消照片辨識|清空轉發|取消今日轉發)$/, 'image_ai']
 ];
 
 function commandFeature(text) {
@@ -287,6 +290,13 @@ function getMainMenuFlex(sourceId) {
           },
           on('image_ai') && {
             type: "button",
+            action: { type: "message", label: "📷 辨識照片", text: "辨識照片" },
+            style: "primary",
+            height: "sm",
+            margin: "md"
+          },
+          on('image_ai') && {
+            type: "button",
             action: {
               type: "uri",
               label: "🔍 審查今日 Case 分流",
@@ -355,7 +365,7 @@ function getMainMenuFlex(sourceId) {
               },
               {
                 type: "text",
-                text: "• 直接在此群組上傳今日「分配表照片」",
+                text: "• 先輸入「辨識照片」，再於兩分鐘內上傳分配表",
                 color: "#36434e",
                 size: "xs"
               },
@@ -770,11 +780,12 @@ function getAutoCalendarAddedFlex(addedEvents, sourceId) {
  * Handles batch image analysis after the debounce window expires.
  * @param {string} sourceId - LINE Group/Room/User ID
  */
-async function triggerBatchProcess(sourceId) {
-  const session = imageGroupSessions.get(sourceId);
+async function triggerBatchProcess(sourceId, sessionKey) {
+  const session = imageGroupSessions.get(sessionKey);
   if (!session) return;
 
-  imageGroupSessions.delete(sourceId);
+  imageGroupSessions.delete(sessionKey);
+  imageUploadIntents.delete(sessionKey);
   console.log(`[Batch Process] Starting processing of ${session.buffers.length} images for ${sourceId}`);
 
   // Use the last uploaded image message ID as the reference
@@ -1017,7 +1028,28 @@ export async function handleWebhookEvent(event) {
         return;
       }
 
-      if (text === '選單') {
+      if (text === '辨識照片' || text === '取消照片辨識') {
+        if (!event.source.userId) return;
+        const key = imageSessionKey(sourceId, event.source.userId);
+        const session = imageGroupSessions.get(key);
+        if (session) {
+          clearTimeout(session.timer);
+          imageGroupSessions.delete(key);
+          updateJob(session.job, { stage: 'done', resultLabel: '已取消' });
+        }
+        imageUploadIntents.delete(key);
+        // Prune unused requests without keeping a timer alive for each sender.
+        for (const [pendingKey, expires] of imageUploadIntents) {
+          if (expires <= Date.now()) imageUploadIntents.delete(pendingKey);
+        }
+        if (text === '辨識照片') imageUploadIntents.set(key, Date.now() + IMAGE_INTENT_MS);
+        await replyMessage(event.replyToken, {
+          type: 'text',
+          text: text === '辨識照片'
+            ? '📷 請在兩分鐘內上傳分配表、公告或行事曆照片。只接收您在此聊天室上傳的照片，連續照片可在 10 秒內續傳。輸入「取消照片辨識」可取消尚未開始的辨識。'
+            : '已取消等待上傳及尚未開始的照片辨識。'
+        });
+      } else if (text === '選單') {
         await replyMessage(event.replyToken, quickMenuText('要做什麼？點下方按鈕，或輸入「主選單」看全部功能。', sourceId));
       } else if (text === 'menu' || text.endsWith('選單') || text === '助手' || text === '說明') {
         await replyMessage(event.replyToken, getMainMenuFlex(sourceId));
@@ -1135,6 +1167,14 @@ export async function handleWebhookEvent(event) {
       const sourceId = event.source.groupId || event.source.roomId || event.source.userId;
       const messageId = message.id;
       if (!featureEnabled(sourceId, 'image_ai')) return;
+      if (!event.source.userId) return;
+      const sessionKey = imageSessionKey(sourceId, event.source.userId);
+      const expires = imageUploadIntents.get(sessionKey);
+      if (!expires || expires <= Date.now()) {
+        imageUploadIntents.delete(sessionKey);
+        return;
+      }
+      imageUploadIntents.set(sessionKey, Date.now() + GROUP_WINDOW_MS);
 
       try {
         // 1. Download image
@@ -1147,7 +1187,7 @@ export async function handleWebhookEvent(event) {
         console.log(`Image saved to ${localImagePath}`);
 
         // 3. Debounce and Group Consecutive Image Uploads
-        if (!imageGroupSessions.has(sourceId)) {
+        if (!imageGroupSessions.has(sessionKey)) {
           // First image of the batch
           const session = {
             messageIds: [messageId],
@@ -1155,7 +1195,7 @@ export async function handleWebhookEvent(event) {
             timer: null,
             job: createJob()
           };
-          imageGroupSessions.set(sourceId, session);
+          imageGroupSessions.set(sessionKey, session);
 
           // Replies are free; this one carries the progress link so nothing
           // else needs to be pushed until the result is ready.
@@ -1169,12 +1209,12 @@ export async function handleWebhookEvent(event) {
 
           // Set 10s timer to trigger batch processing
           session.timer = setTimeout(() => {
-            triggerBatchProcess(sourceId);
+            triggerBatchProcess(sourceId, sessionKey);
           }, GROUP_WINDOW_MS);
 
         } else {
           // Subsequent image uploaded within 10s window
-          const session = imageGroupSessions.get(sourceId);
+          const session = imageGroupSessions.get(sessionKey);
           session.messageIds.push(messageId);
           session.buffers.push(imageBuffer);
 
@@ -1190,7 +1230,7 @@ export async function handleWebhookEvent(event) {
           });
 
           session.timer = setTimeout(() => {
-            triggerBatchProcess(sourceId);
+            triggerBatchProcess(sourceId, sessionKey);
           }, GROUP_WINDOW_MS);
         }
 

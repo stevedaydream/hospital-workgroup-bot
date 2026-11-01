@@ -2,6 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { offerImage, chooseImage } from '../src/image-choice.js';
 
+test('direct photo upload offers classification separately from forced announcement import', () => {
+  const prompt = offerImage('case-chat', 'sender', 'case-table');
+  const choice = chooseImage(prompt.quickReply.items[2].action.data, 'case-chat', 'sender');
+  assert.deepEqual(choice, { ids: ['case-table'], announcementOnly: false });
+  const announcement = offerImage('case-chat', 'sender', 'notice');
+  assert.equal(chooseImage(announcement.quickReply.items[0].action.data, 'case-chat', 'sender').announcementOnly, true);
+});
+
 test('ignoring a chat photo does not suppress the next photo or include it in a batch', () => {
   const wedding = offerImage('new-chat', 'sender', 'wedding');
   const notice = offerImage('new-chat', 'sender', 'notice');

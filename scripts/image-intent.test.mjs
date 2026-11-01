@@ -15,7 +15,8 @@ test('photos offer consent without downloading; consent buttons are sender-bound
     };
     const photo = id => handleWebhookEvent({type:'message',replyToken:'test',source,message:{type:'image',id}});
     await photo('one');
-    assert.equal(replies[0].text,'要將圖片新增為公告嗎？不新增無須理會');
+    assert.equal(replies[0].text,'要如何處理這張圖片？不處理無須理會');
+    assert.deepEqual(replies[0].quickReply.items.map(item=>item.action.label), ['新增公告','連續圖片公告','辨識 Case 表／行程']);
     await photo('two');
     assert.equal(replies.length,2);
     const data = replies[1].quickReply.items[1].action.data;

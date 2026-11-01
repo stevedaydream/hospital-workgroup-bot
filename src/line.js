@@ -367,7 +367,7 @@ function getMainMenuFlex(sourceId) {
               },
               {
                 type: "text",
-                text: "• 先輸入「辨識照片」，再於兩分鐘內上傳分配表",
+                text: "• 上傳分配表後，點選「辨識 Case 表／行程」",
                 color: "#36434e",
                 size: "xs"
               },
@@ -1113,7 +1113,7 @@ export async function handleWebhookEvent(event) {
         await replyMessage(event.replyToken, {
           type: 'text',
           text: text === '辨識照片'
-            ? '請傳送圖片後點選用途：公告選「單張新增」或「連續圖片」；分配表或行程選「辨識分配表／行程」。未點選不會處理。'
+            ? '請直接傳送圖片，選擇「新增公告」「連續圖片公告」或「辨識 Case 表／行程」。未點選不會處理。'
             : '已取消等待上傳及尚未開始的照片辨識。'
         });
       } else if (text === '選單') {
@@ -1233,8 +1233,7 @@ export async function handleWebhookEvent(event) {
     if (message.type === 'image') {
       const sourceId = event.source.groupId || event.source.roomId || event.source.userId;
       if (!featureEnabled(sourceId, 'image_ai') || !event.source.userId) return;
-      const key = imageSessionKey(sourceId, event.source.userId);
-      const prompt = offerImage(sourceId, event.source.userId, message.id, (imageUploadIntents.get(key) || 0) > Date.now());
+      const prompt = offerImage(sourceId, event.source.userId, message.id);
       if (prompt) await replyMessage(event.replyToken, prompt);
     }
   }

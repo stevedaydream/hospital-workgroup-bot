@@ -12,7 +12,7 @@ import { db } from './db.js';
 // are, and everything is on in a 1:1 chat.
 export const FEATURES = [
   { key: 'menu', label: '選單／主選單', hint: '「選單」「主選單」「說明」等指令', defaultOn: true },
-  { key: 'image_ai', label: '照片 AI 辨識', hint: '傳圖後點選單張或連續圖片新增公告，未點選不處理；分配表／行程先輸入「辨識照片」；含「取消今日轉發」', defaultOn: true },
+  { key: 'image_ai', label: '照片 AI 辨識', hint: '傳圖後選新增公告、連續圖片公告或辨識 Case 表／行程；未點選不處理；含「取消今日轉發」', defaultOn: true },
   { key: 'dispatch', label: '接收 Case 分配表轉發', hint: '每日 07:30 推播分配表到此群組；含「取消轉發」', defaultOn: true },
   { key: 'calendar', label: '行事曆', hint: '「行事曆」「今日行程」「明日行程」', defaultOn: true },
   { key: 'notes', label: '注意事項', hint: '「編輯筆記」連結與選單按鈕', defaultOn: true },

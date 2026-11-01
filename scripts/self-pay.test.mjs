@@ -55,7 +55,7 @@ test('handler authorizes private queries from the binding and rechecks every pag
     assert.equal(decodeURIComponent(chatUrl.search.slice(1)),'自費 骨科 A&B');
     assert.ok(groupReply.text.includes(chatUrl.toString()));
     assert.ok((await medbaseCommand('自費',{...source,type:'room'})).quickReply);
-    assert.deepEqual(await medbaseCommand('自費 骨科',source,()=>false),{silent:true});
+    assert.deepEqual(await medbaseCommand('自費 骨科',source,()=>false),{type:'text',text:'MedBase 功能查詢功能目前開發測試中...'});
     assert.equal(calls.length,1);
     await selfPayCommand({query:'骨科',offset:5,his:'forged'},source);
     assert.equal(calls[1].his,'trusted-his');

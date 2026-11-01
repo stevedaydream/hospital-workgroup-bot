@@ -41,6 +41,12 @@ sqlite.exec(`
     updated_by  TEXT NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS note_image_imports (
+    image_key TEXT NOT NULL,
+    note_id INTEGER NOT NULL REFERENCES general_notes(id) ON DELETE CASCADE,
+    PRIMARY KEY (image_key, note_id)
+  );
+
   CREATE TABLE IF NOT EXISTS doctor_group_mapping (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
     match_key      TEXT NOT NULL,
@@ -313,6 +319,34 @@ export const db = {
 
   // --- General Notes API ---
   general_notes: {
+    /** Persist image identity and compare existing notices atomically, including legacy rows. */
+    importFromImages(notes, imageHashes) {
+      const imageKey = JSON.stringify([...new Set(imageHashes)].sort());
+      const normalize = value => value.normalize('NFKC').replace(/\s+/gu, '').trim();
+      return sqlite.transaction(() => {
+        if (sqlite.prepare('SELECT 1 FROM note_image_imports WHERE image_key = ?').get(imageKey)) {
+          return { created: [], skipped: notes.length };
+        }
+        const existing = sqlite.prepare('SELECT * FROM general_notes').all();
+        const created = [];
+        let skipped = 0;
+        for (const note of notes) {
+          let row = existing.find(row => normalize(row.title) === normalize(note.title) && normalize(row.content) === normalize(note.content));
+          if (row) {
+            skipped++;
+          } else {
+            const info = sqlite.prepare('INSERT INTO general_notes (title, content, updated_at, updated_by) VALUES (?, ?, ?, ?)')
+              .run(note.title, note.content, nowIso(), 'AI 晨會多圖整併');
+            row = sqlite.prepare('SELECT * FROM general_notes WHERE id = ?').get(info.lastInsertRowid);
+            existing.push(row);
+            created.push(row);
+          }
+          sqlite.prepare('INSERT OR IGNORE INTO note_image_imports (image_key, note_id) VALUES (?, ?)').run(imageKey, row.id);
+        }
+        return { created, skipped };
+      })();
+    },
+
     async getAll() {
       return sqlite.prepare('SELECT * FROM general_notes ORDER BY updated_at DESC').all();
     },

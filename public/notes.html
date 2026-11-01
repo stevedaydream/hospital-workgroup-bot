@@ -6,6 +6,15 @@
   <title>病房注意事項管理目錄</title>
   <link rel="stylesheet" href="/css/style.css">
   <style>
+    .review-panel { margin: 12px 0 20px; padding: 16px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); }
+    .review-panel summary { cursor: pointer; font-weight: 600; padding: 8px 0; }
+    .review-panel p { margin: 8px 0; line-height: 1.7; }
+    .review-item { padding: 16px 0; border-top: 1px solid var(--line); }
+    .review-item h3 { font-size: 16px; overflow-wrap: anywhere; }
+    .review-content { white-space: pre-wrap; overflow-wrap: anywhere; }
+    .review-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .review-actions button { flex: 1 1 130px; min-height: 44px; padding: 10px 12px; }
+    .review-actions button:disabled { opacity: .6; cursor: wait; }
     .filter-bar {
       display: flex;
       gap: 6px;
@@ -185,6 +194,12 @@
         <span>＋</span> 新增公告項目
       </button>
     </div>
+
+    <details id="note-reviews" class="review-panel">
+      <summary id="review-summary">待確認公告</summary>
+      <p>疑似重複的辨識結果會保留在這裡。補建會使用原文字，不需重新辨識。</p>
+      <div id="review-list" aria-live="polite">讀取中…</div>
+    </details>
 
     <!-- Horizontal Category Filter Bar -->
     <div class="filter-bar" id="filter-bar">
@@ -455,6 +470,7 @@
 
     // Load Notices List
     async function fetchNotesList() {
+      await fetchNoteReviews();
       try {
         const response = await fetch('/api/notes');
         if (response.ok) {
@@ -467,6 +483,47 @@
         document.getElementById('notes-list').innerHTML = '<div style="text-align: center; color: var(--color-rose); padding: 45px;">連線異常</div>';
         console.error(error);
       }
+    }
+
+    async function fetchNoteReviews() {
+      const list = document.getElementById('review-list');
+      try {
+        const response = await fetch('/api/note-reviews', { cache: 'no-store' });
+        if (!response.ok) throw new Error('暫時無法讀取，請重新開啟目錄。');
+        const reviews = await response.json();
+        document.getElementById('review-summary').textContent = `待確認公告（${reviews.length}）`;
+        list.innerHTML = reviews.length ? reviews.map(item => `
+          <article class="review-item">
+            <h3>${escapeHtml(item.title)}</h3>
+            <p class="review-content">${escapeHtml(item.content)}</p>
+            <details><summary>比對既有公告：${escapeHtml(item.candidate_title || '原公告已刪除')}</summary>
+              <p class="review-content">${escapeHtml(item.candidate_content || '可直接核對上方待確認內容。')}</p>
+            </details>
+            <div class="review-actions">
+              <button class="btn-primary" onclick="resolveReview(${item.id}, 'approve', this)">補建公告</button>
+              <button class="btn-secondary" onclick="resolveReview(${item.id}, 'dismiss', this)">確認重複，捨棄</button>
+            </div>
+          </article>`).join('') : '<p>目前沒有待確認公告。</p>';
+        if (location.hash === '#note-reviews') document.getElementById('note-reviews').open = true;
+      } catch (error) {
+        list.textContent = error.message;
+      }
+    }
+
+    async function resolveReview(id, action, button) {
+      const buttons = button.closest('.review-actions').querySelectorAll('button');
+      buttons.forEach(item => item.disabled = true);
+      try {
+        const response = await fetch(`/api/note-reviews/${id}/resolve`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action })
+        });
+        if (!response.ok) throw new Error('處理失敗，資料仍保留，請稍後重試。');
+        const result = await response.json();
+        showToast(result.status === 'approved' ? '已補建公告，未重新辨識' : '已捨棄重複公告');
+        await fetchNotesList();
+      } catch (error) {
+        showToast(error.message, true);
+      } finally { buttons.forEach(item => item.disabled = false); }
     }
 
     // Client-side category filtering

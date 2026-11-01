@@ -510,8 +510,13 @@
               <p class="review-content">${escapeHtml(item.candidate_content || '可直接核對上方待確認內容。')}</p>
             </details>` : ''}
             <p class="review-ai-status" role="status"></p>
+            <label for="review-model-${item.id}">整理模型</label>
+            <select id="review-model-${item.id}" style="min-height:44px; margin:8px; padding:8px; font:inherit;">
+              <option value="qwen3.6">Qwen3.6</option><option value="local">Strata</option>
+            </select>
             <div class="review-actions">
               <button class="btn-secondary" onclick="organizeReview(${item.id}, this)">${item.draft_content ? '重新 AI 整理' : 'AI 整理'}</button>
+              <button class="btn-secondary" data-switch="true" onclick="organizeReview(${item.id}, this, true)">切換並重試</button>
               ${item.draft_content ? `<button class="btn-primary" onclick="resolveReview(${item.id}, 'approve', this, true)">確認發布草稿</button>` : ''}
               <button class="btn-secondary" onclick="resolveReview(${item.id}, 'approve', this)">原文直接補建</button>
               <button class="btn-secondary" onclick="resolveReview(${item.id}, 'dismiss', this)">捨棄</button>
@@ -538,28 +543,34 @@
     }
     setInterval(updateReviewCountdowns, 1000);
 
-    async function organizeReview(id, button) {
+    async function organizeReview(id, button, switchModel = false) {
       const article = button.closest('.review-item');
+      const run = String(Number(article.dataset.run || 0) + 1);
+      article.dataset.run = run;
+      const model = document.getElementById(`review-model-${id}`).value;
       const status = article.querySelector('.review-ai-status');
       const buttons = article.querySelectorAll('button');
-      buttons.forEach(item => item.disabled = true);
-      status.textContent = 'AI 整理中，原文已保存，完成後會顯示草稿，不會自動發布。';
+      buttons.forEach(item => item.disabled = item.dataset.switch !== 'true');
+      status.textContent = '準備模型：先停止另一個模型並確認釋放，再啟動選定模型。原文已保存，不會自動發布。';
       try {
-        const started = await fetch(`/api/note-reviews/${id}/organize`, { method: 'POST' });
-        if (!started.ok) throw new Error('無法開始整理，公告可能已處理或到期。');
+        const started = await fetch(`/api/note-reviews/${id}/organize`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model, switchModel }) });
+        if (!started.ok) { const failure = await started.json().catch(() => ({})); throw new Error(failure.error || '無法開始整理，公告可能已處理或到期。'); }
         for (;;) {
           await new Promise(resolve => setTimeout(resolve, 2000));
-          if (!article.isConnected) return;
+          if (!article.isConnected || article.dataset.run !== run) return;
           const response = await fetch(`/api/note-reviews/${id}/organize`, { cache: 'no-store' });
           if (!response.ok) throw new Error('查詢失敗，請重新開啟目錄；原文仍保留。');
           const result = await response.json();
-          if (result.status === 'running') continue;
+          if (result.status === 'running') {
+            status.textContent = result.stage === 'preparing' ? '正在停止原模型並等待釋放；若有其他工作則會停止切換。' : `正在使用 ${result.model === 'local' ? 'Strata' : 'Qwen3.6'} 整理。若逾時，可選另一個模型後按「切換並重試」。`;
+            continue;
+          }
           if (result.status !== 'done') throw new Error(result.error || '整理已中斷，可重新整理；原文仍保留。');
           await fetchNoteReviews();
           return;
         }
-      } catch (error) { status.textContent = error.message; }
-      finally { buttons.forEach(item => item.disabled = false); updateReviewCountdowns(); }
+      } catch (error) { if (article.dataset.run === run) status.textContent = error.message; }
+      finally { if (article.dataset.run === run) { buttons.forEach(item => item.disabled = false); updateReviewCountdowns(); } }
     }
 
     async function resolveReview(id, action, button, useDraft = false) {

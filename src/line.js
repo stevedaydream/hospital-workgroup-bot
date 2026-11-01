@@ -1000,7 +1000,7 @@ export async function handleWebhookEvent(event) {
     }
     const sessionKey = imageSessionKey(sourceId, event.source.userId);
     const job = createJob();
-    await replyMessage(event.replyToken, { type: 'text', text: `已開始處理 ${choice.ids.length} 張圖片。\n即時進度：${BASE_URL}/progress.html?job=${job.id}` });
+    await replyMessage(event.replyToken, { type: 'text', text: `已開始處理 ${choice.ids.length} 張圖片。\n點開查看即時進度（聊天預覽不會更新）：\n${BASE_URL}/progress.html?job=${job.id}` });
     try {
       const buffers = [];
       for (const id of choice.ids) {

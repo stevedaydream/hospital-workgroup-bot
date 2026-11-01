@@ -230,6 +230,14 @@ app.get('/api/users', async (c) => {
 });
 
 // Fetch all ward notes (Directory List)
+app.get('/api/note-reviews', c => c.json(db.note_reviews.list()));
+app.post('/api/note-reviews/:id/resolve', async c => {
+  const { action } = await c.req.json().catch(() => ({}));
+  if (!['approve', 'dismiss'].includes(action)) return c.json({ error: '無效操作' }, 400);
+  const result = db.note_reviews.resolve(c.req.param('id'), action, c.get('displayName') || '未知人員');
+  return result ? c.json(result) : c.json({ error: '找不到待確認公告' }, 404);
+});
+
 app.get('/api/notes', async (c) => {
   try {
     const notes = await db.general_notes.getAll();

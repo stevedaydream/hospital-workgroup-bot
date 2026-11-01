@@ -855,14 +855,15 @@ async function triggerBatchProcess(sourceId, sessionKey) {
       // --- 🔴 WARD_NOTE Pipeline: Auto-Create Notices ---
       const notes = Array.isArray(ocrResult.notes) ? ocrResult.notes : [];
       const { created: addedNotes, skipped, similar = [] } = db.general_notes.importFromImages(
-        notes, session.buffers.map(buffer => crypto.createHash('sha256').update(buffer).digest('hex'))
+        notes, session.buffers.map(buffer => crypto.createHash('sha256').update(buffer).digest('hex')),
+        { sourceId, userId: session.userId || '' }
       );
       if (skipped > 0) {
         resultMessages.push({ type: 'text', text: `♻️ 已略過 ${skipped} 筆重複公告，未重複新增。\n公告目錄：https://liff.line.me/${LIFF_NOTES_ID}?groupId=${sourceId}` });
       }
       if (similar.length > 0) {
         const titles = [...new Set(similar.map(note => note.title))].join('、');
-        resultMessages.push({ type: 'text', text: `⚠️ 疑似已有相同公告：${titles}\n已攔截 ${similar.length} 筆，尚未新增。請開啟目錄核對；若是新版規定，請編輯原公告更新。\nhttps://liff.line.me/${LIFF_NOTES_ID}?groupId=${sourceId}` });
+        resultMessages.push({ type: 'text', text: `⚠️ 疑似已有相同公告：${titles}\n已暫存 ${similar.length} 筆至「待確認公告」。若攔錯，可直接補建，不用重新辨識。\nhttps://liff.line.me/${LIFF_NOTES_ID}?groupId=${sourceId}#note-reviews` });
       }
 
       if (addedNotes.length > 0) {
@@ -1030,7 +1031,7 @@ export async function handleWebhookEvent(event) {
       }
       // Each confirmation gets its own key so parallel jobs cannot overwrite one another.
       const jobKey = `${sessionKey}:${job.id}`;
-      imageGroupSessions.set(jobKey, { buffers, messageIds: choice.ids, job, announcementOnly: choice.announcementOnly });
+      imageGroupSessions.set(jobKey, { buffers, messageIds: choice.ids, job, announcementOnly: choice.announcementOnly, userId: event.source.userId });
       await triggerBatchProcess(sourceId, jobKey);
     } catch (error) {
       updateJob(job, { stage: 'failed', error: error.message });

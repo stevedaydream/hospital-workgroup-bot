@@ -48,6 +48,22 @@ sqlite.exec(`
     PRIMARY KEY (image_key, note_id)
   );
 
+  CREATE TABLE IF NOT EXISTS note_reviews (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    candidate_id INTEGER REFERENCES general_notes(id) ON DELETE SET NULL,
+    image_key TEXT NOT NULL,
+    source_group_id TEXT NOT NULL DEFAULT '',
+    source_user_id TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'approved', 'dismissed')),
+    note_id INTEGER REFERENCES general_notes(id) ON DELETE SET NULL,
+    created_at TEXT NOT NULL,
+    resolved_at TEXT,
+    resolved_by TEXT,
+    UNIQUE(image_key, title, content)
+  );
+
   CREATE TABLE IF NOT EXISTS doctor_group_mapping (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
     match_key      TEXT NOT NULL,
@@ -325,7 +341,7 @@ export const db = {
         WHERE json_each.value = ? LIMIT 1`).get(hash);
     },
     /** Persist image identity and compare existing notices atomically, including legacy rows. */
-    importFromImages(notes, imageHashes) {
+    importFromImages(notes, imageHashes, { sourceId = '', userId = '' } = {}) {
       const imageKey = JSON.stringify([...new Set(imageHashes)].sort());
       const normalize = normalizeNotice;
       return sqlite.transaction(() => {
@@ -345,6 +361,10 @@ export const db = {
             if (candidate) {
               // Do not save an image mapping: a similarity match needs review
               // and is not proof that the new image is identical.
+              sqlite.prepare(`INSERT INTO note_reviews (title, content, candidate_id, image_key, source_group_id, source_user_id, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(image_key, title, content) DO UPDATE SET status = 'pending', candidate_id = excluded.candidate_id,
+                  resolved_at = NULL, resolved_by = NULL`).run(note.title, note.content, candidate.id, imageKey, sourceId, userId, nowIso());
               similar.push({ id: candidate.id, title: candidate.title });
               continue;
             }
@@ -386,6 +406,33 @@ export const db = {
     async delete(id) {
       sqlite.prepare('DELETE FROM general_notes WHERE id = ?').run(id);
       return { success: true };
+    }
+  },
+
+  note_reviews: {
+    list() {
+      return sqlite.prepare(`SELECT r.*, n.title AS candidate_title, n.content AS candidate_content
+        FROM note_reviews r LEFT JOIN general_notes n ON n.id = r.candidate_id
+        WHERE r.status = 'pending' ORDER BY r.id DESC`).all();
+    },
+    resolve(id, action, by) {
+      if (!['approve', 'dismiss'].includes(action)) throw new Error('無效操作');
+      return sqlite.transaction(() => {
+        const row = sqlite.prepare('SELECT * FROM note_reviews WHERE id = ?').get(id);
+        if (!row) return null;
+        if (row.status !== 'pending') return { status: row.status, note_id: row.note_id };
+        let noteId = null;
+        if (action === 'approve') {
+          // Human confirmation deliberately bypasses OCR and similarity checks.
+          noteId = Number(sqlite.prepare('INSERT INTO general_notes (title, content, updated_at, updated_by) VALUES (?, ?, ?, ?)')
+            .run(row.title, row.content, nowIso(), by).lastInsertRowid);
+          sqlite.prepare('INSERT OR IGNORE INTO note_image_imports (image_key, note_id) VALUES (?, ?)').run(row.image_key, noteId);
+        }
+        const status = action === 'approve' ? 'approved' : 'dismissed';
+        sqlite.prepare('UPDATE note_reviews SET status = ?, note_id = ?, resolved_at = ?, resolved_by = ? WHERE id = ?')
+          .run(status, noteId, nowIso(), by, id);
+        return { status, note_id: noteId };
+      })();
     }
   },
 

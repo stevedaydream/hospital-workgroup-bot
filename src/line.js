@@ -9,6 +9,7 @@ import { createJob, updateJob, trackModelStage } from './progress.js';
 import { medbaseCommand, medbaseEnabled, MEDBASE_APP_URL, selfPayCommand } from './medbase.js';
 import { selfPayPage } from './self-pay.js';
 import { parseLeaveMessage } from './leave-message.js';
+import { allAnnouncement } from './all-announcement.js';
 import { prepareLeaveAlias, leaveAliasPostback, leaveRegistrationReply } from './leave-alias.js';
 import { todayInTaipei, dayOfWeek } from './util/date.js';
 import { featureEnabled, disabledFeatureMessage as disabledMessage } from './features.js';
@@ -1073,6 +1074,27 @@ export async function handleWebhookEvent(event) {
     if (message.type === 'text') {
       const text = message.text.trim();
       const sourceId = event.source.groupId || event.source.roomId || event.source.userId;
+
+      const announcement = event.source.type === 'group' && message.id ? allAnnouncement(message) : null;
+      if (announcement) {
+        if (!featureEnabled(sourceId, 'notes')) {
+          await replyMessage(event.replyToken, disabledMessage('notes'));
+          return;
+        }
+        const user = event.source.userId && await db.users.getByLineUserId(event.source.userId);
+        const result = db.general_notes.importFromImages([announcement], [`line-text:${message.id}`], {
+          sourceId, userId: event.source.userId || '', updatedBy: user?.display_name || 'LINE @all 公告'
+        });
+        const link = `https://liff.line.me/${LIFF_NOTES_ID}?groupId=${sourceId}`;
+        await replyMessage(event.replyToken, {
+          type: 'text', text: result.created.length
+            ? `📝 已將 @all 訊息記錄為公告／提醒：${announcement.title}\n${link}`
+            : result.similar?.length
+              ? `⚠️ 這則 @all 訊息疑似與既有公告重複，已暫存至「待確認公告」7 天，可直接補建，不需重新辨識。\n${link}#note-reviews`
+              : `♻️ 這則 @all 公告已記錄，未重複新增。\n${link}`
+        });
+        return;
+      }
 
       if (event.source.type === 'group' && event.source.userId && message.id &&
           featureEnabled(sourceId, 'travel') && featureEnabled(sourceId, 'leave_autoreg')) {

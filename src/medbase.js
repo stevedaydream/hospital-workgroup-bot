@@ -1,3 +1,4 @@
+import { disabledFeatureMessage } from './features.js';
 import crypto from 'crypto';
 import dotenv from 'dotenv';
 import { db } from './db.js';
@@ -105,7 +106,7 @@ function linkHelp() {
 }
 
 export async function selfPayCommand(request, source, on = () => true) {
-  if (!on('medbase_lookup')) return { silent: true };
+  if (!on('medbase_lookup')) return disabledFeatureMessage('medbase_lookup');
   if (request.query.length > 100) return { type: 'text', text: '搜尋關鍵字請限制在 100 字以內。' };
   if (source.type !== 'user') {
     const command = request.query ? `自費 ${request.query}` : '自費';
@@ -133,13 +134,13 @@ export async function selfPayCommand(request, source, on = () => true) {
  * Handles MedBase commands. Returns the reply message, or null when `text`
  * is not a MedBase command (the caller then tries its own commands).
  * `on(feature)` tells whether a feature switch is on for this chat; a command
- * whose feature is off gets no reply at all.
+ * whose feature is off gets a development notice.
  */
 export async function medbaseCommand(text, source, on = () => true) {
   const itemRequest = selfPayRequest(text);
   if (itemRequest) return selfPayCommand(itemRequest, source, on);
   const navigation = medbaseLinkCommand(text, MEDBASE_API_URL);
-  if (navigation) return on('medbase_lookup') ? navigation : { silent: true };
+  if (navigation) return on('medbase_lookup') ? navigation : disabledFeatureMessage('medbase_lookup');
   if (!medbaseEnabled) return null;
   const userId = source.userId;
 
@@ -163,7 +164,7 @@ export async function medbaseCommand(text, source, on = () => true) {
   }
 
   if (/^(我的班|我的班表|我的值班)$/.test(text)) {
-    if (!on('my_schedule')) return { silent: true };
+    if (!on('my_schedule')) return disabledFeatureMessage('my_schedule');
     const me = userId && db.medbase_links.get(userId);
     if (!me) return { type: 'text', text: linkHelp() };
     let message;
@@ -189,7 +190,7 @@ export async function medbaseCommand(text, source, on = () => true) {
   // The duty table is hospital-wide, so it needs neither a linked account nor a group setting.
   const duty = DUTY_COMMANDS.find(c => c.re.test(text));
   if (duty) {
-    if (!on('duty')) return { silent: true };
+    if (!on('duty')) return disabledFeatureMessage('duty');
     try {
       return { type: 'text', text: await dutyText(duty.offsets) };
     } catch (error) {

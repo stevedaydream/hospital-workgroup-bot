@@ -31,7 +31,7 @@ test('unknown deputy selection is explicit, sender-bound, scoped, cancellable an
     const pending=db.pending_leave_aliases.get(token);assert.equal(pending.choices[0].name,'張小明');
     const count=replies.length;await handleWebhookEvent(message('unknown','老張'));assert.equal(replies.length,count);
     await post(selection,{...source,userId:'Uother'});assert.match(replies.at(-1).text,/僅原公告/);
-    await post(selection,{...source,groupId:'Cother'});assert.match(replies.at(-1).text,/僅原公告/);
+    await post(selection,{...source,groupId:'Cother'});assert.match(replies.at(-1).text,/功能目前開發測試中/);
     await post('leavealias:'+JSON.stringify({token,select:999}));assert.match(replies.at(-1).text,/人選無效/);
     assert.equal(db.travels.list().length,0);
     const next=menu.contents.footer.contents.find(b=>b.action.label==='下一頁').action.data;

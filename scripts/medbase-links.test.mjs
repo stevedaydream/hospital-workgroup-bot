@@ -43,7 +43,7 @@ test('command handler respects the group switch and navigation needs no API key 
     assert.equal(result.type, 'flex');
     assert.equal(new URL(result.contents.footer.contents[0].action.uri).pathname, '/items');
     assert.equal((await medbaseCommand('自費 人工關節', source)).type, 'text');
-    assert.deepEqual(await medbaseCommand('MedBase 查詢', source, () => false), {silent: true});
+    assert.deepEqual(await medbaseCommand('MedBase 查詢', source, () => false), {type: 'text', text: 'MedBase 功能查詢功能目前開發測試中...'});
     assert.equal(await medbaseCommand('今天值班', source), null);
   `], { cwd: new URL('..', import.meta.url), env: { ...process.env, SQLITE_PATH: ':memory:', MEDBASE_API_KEY: '', MEDBASE_API_URL: 'https://medbase.example' }, encoding: 'utf8' });
   assert.equal(result.status, 0, result.stderr || result.stdout);

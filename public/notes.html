@@ -12,6 +12,7 @@
     .review-item { padding: 16px 0; border-top: 1px solid var(--line); }
     .review-item h3 { font-size: 16px; overflow-wrap: anywhere; }
     .review-content { white-space: pre-wrap; overflow-wrap: anywhere; }
+    .review-countdown { color: var(--ink-2); font-size: 13px; font-variant-numeric: tabular-nums; }
     .review-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
     .review-actions button { flex: 1 1 130px; min-height: 44px; padding: 10px 12px; }
     .review-actions button:disabled { opacity: .6; cursor: wait; }
@@ -197,7 +198,7 @@
 
     <details id="note-reviews" class="review-panel">
       <summary id="review-summary">待確認公告</summary>
-      <p>疑似重複的辨識結果會保留在這裡。補建會使用原文字，不需重新辨識。</p>
+      <p>疑似重複的辨識結果保留 7 天，逾期自動清除。補建使用原文字，不需重新辨識。</p>
       <div id="review-list" aria-live="polite">讀取中…</div>
     </details>
 
@@ -495,6 +496,7 @@
         list.innerHTML = reviews.length ? reviews.map(item => `
           <article class="review-item">
             <h3>${escapeHtml(item.title)}</h3>
+            <p class="review-countdown" data-expires="${escapeHtml(item.expires_at)}" role="timer"></p>
             <p class="review-content">${escapeHtml(item.content)}</p>
             <details><summary>比對既有公告：${escapeHtml(item.candidate_title || '原公告已刪除')}</summary>
               <p class="review-content">${escapeHtml(item.candidate_content || '可直接核對上方待確認內容。')}</p>
@@ -505,10 +507,24 @@
             </div>
           </article>`).join('') : '<p>目前沒有待確認公告。</p>';
         if (location.hash === '#note-reviews') document.getElementById('note-reviews').open = true;
+        updateReviewCountdowns();
       } catch (error) {
         list.textContent = error.message;
       }
     }
+
+    function updateReviewCountdowns() {
+      document.querySelectorAll('.review-countdown').forEach(element => {
+        const seconds = Math.max(0, Math.floor((Date.parse(element.dataset.expires) - Date.now()) / 1000));
+        const days = Math.floor(seconds / 86400);
+        const clock = [Math.floor(seconds % 86400 / 3600), Math.floor(seconds % 3600 / 60), seconds % 60]
+          .map(value => String(value).padStart(2, '0')).join(':');
+        element.textContent = seconds ? `剩餘 ${days} 天 ${clock} 後自動清除` : '已到期，無法補建';
+        element.title = `到期時間：${new Date(element.dataset.expires).toLocaleString('zh-TW', { hour12: false })}`;
+        if (!seconds) element.closest('.review-item').querySelectorAll('button').forEach(button => button.disabled = true);
+      });
+    }
+    setInterval(updateReviewCountdowns, 1000);
 
     async function resolveReview(id, action, button) {
       const buttons = button.closest('.review-actions').querySelectorAll('button');

@@ -10,7 +10,7 @@ export function cancelImages(sourceId, userId) {
   for (const [token, item] of pending) if (item.sourceId === sourceId && item.userId === userId) pending.delete(token);
 }
 
-export function offerImage(sourceId, userId, messageId, allowRecognition = false) {
+export function offerImage(sourceId, userId, messageId) {
   for (const [key, item] of pending) if (item.expires <= Date.now()) pending.delete(key);
   let item = [...pending.values()].find(item => item.sourceId === sourceId && item.userId === userId);
   if (item?.ids.includes(messageId)) return null;
@@ -27,10 +27,10 @@ export function offerImage(sourceId, userId, messageId, allowRecognition = false
       ? { type: 'text', text: `已收集 ${item.ids.length} 張圖片。`, quickReply: actions(item.token, [['完成並建立', 'finish'], ['取消', 'cancel']]) }
       : null;
   }
-  item = { token: randomUUID(), sourceId, userId, ids: [messageId], expires: Date.now() + TTL, mode: 'pending', allowRecognition };
+  item = { token: randomUUID(), sourceId, userId, ids: [messageId], expires: Date.now() + TTL, mode: 'pending' };
   pending.set(item.token, item);
-  return { type: 'text', text: '要將圖片新增為公告嗎？不新增無須理會',
-    quickReply: actions(item.token, [['單張新增', 'single'], ['連續圖片', 'multi'], ...(allowRecognition ? [['辨識分配表／行程', 'recognize']] : [])]) };
+  return { type: 'text', text: '要如何處理這張圖片？不處理無須理會',
+    quickReply: actions(item.token, [['新增公告', 'single'], ['連續圖片公告', 'multi'], ['辨識 Case 表／行程', 'recognize']]) };
 }
 
 export function chooseImage(data, sourceId, userId) {
@@ -46,7 +46,7 @@ export function chooseImage(data, sourceId, userId) {
     pending.delete(token);
     return { message: { type: 'text', text: '已取消新增公告。' } };
   }
-  if (((mode === 'single' || (mode === 'recognize' && item.allowRecognition)) && item.mode === 'pending') || (mode === 'finish' && item.mode === 'multi')) {
+  if (((mode === 'single' || mode === 'recognize') && item.mode === 'pending') || (mode === 'finish' && item.mode === 'multi')) {
     pending.delete(token);
     return { ids: mode === 'finish' ? item.ids : item.ids.slice(0, 1), announcementOnly: mode !== 'recognize' };
   }

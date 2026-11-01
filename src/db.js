@@ -341,7 +341,7 @@ export const db = {
         WHERE json_each.value = ? LIMIT 1`).get(hash);
     },
     /** Persist image identity and compare existing notices atomically, including legacy rows. */
-    importFromImages(notes, imageHashes, { sourceId = '', userId = '' } = {}) {
+    importFromImages(notes, imageHashes, { sourceId = '', userId = '', updatedBy = 'AI 晨會多圖整併' } = {}) {
       const imageKey = JSON.stringify([...new Set(imageHashes)].sort());
       const normalize = normalizeNotice;
       return sqlite.transaction(() => {
@@ -369,7 +369,7 @@ export const db = {
               continue;
             }
             const info = sqlite.prepare('INSERT INTO general_notes (title, content, updated_at, updated_by) VALUES (?, ?, ?, ?)')
-              .run(note.title, note.content, nowIso(), 'AI 晨會多圖整併');
+              .run(note.title, note.content, nowIso(), updatedBy);
             row = sqlite.prepare('SELECT * FROM general_notes WHERE id = ?').get(info.lastInsertRowid);
             existing.push(row);
             created.push(row);

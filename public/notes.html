@@ -517,9 +517,10 @@
       document.querySelectorAll('.review-countdown').forEach(element => {
         const seconds = Math.max(0, Math.floor((Date.parse(element.dataset.expires) - Date.now()) / 1000));
         const days = Math.floor(seconds / 86400);
-        const clock = [Math.floor(seconds % 86400 / 3600), Math.floor(seconds % 3600 / 60), seconds % 60]
-          .map(value => String(value).padStart(2, '0')).join(':');
-        element.textContent = seconds ? `剩餘 ${days} 天 ${clock} 後自動清除` : '已到期，無法補建';
+        const hours = Math.floor(seconds % 86400 / 3600);
+        element.textContent = !seconds ? '已到期，無法補建'
+          : seconds < 3600 ? '剩餘不到 1 小時後自動清除'
+          : `剩餘 ${days} 天 ${hours} 小時後自動清除`;
         element.title = `到期時間：${new Date(element.dataset.expires).toLocaleString('zh-TW', { hour12: false })}`;
         if (!seconds) element.closest('.review-item').querySelectorAll('button').forEach(button => button.disabled = true);
       });

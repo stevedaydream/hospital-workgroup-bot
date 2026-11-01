@@ -13,6 +13,13 @@ export function cancelImages(sourceId, userId) {
 export function offerImage(sourceId, userId, messageId, allowRecognition = false) {
   for (const [key, item] of pending) if (item.expires <= Date.now()) pending.delete(key);
   let item = [...pending.values()].find(item => item.sourceId === sourceId && item.userId === userId);
+  if (item?.ids.includes(messageId)) return null;
+  // Only an explicit multi-image choice may collect subsequent photos.
+  // A new photo supersedes an ignored prompt, including its old buttons.
+  if (item?.mode === 'pending') {
+    pending.delete(item.token);
+    item = undefined;
+  }
   if (item) {
     if (!item.ids.includes(messageId)) item.ids.push(messageId);
     item.expires = Date.now() + TTL;

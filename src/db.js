@@ -13,6 +13,7 @@ import fs from 'fs';
 import path from 'path';
 import Database from 'better-sqlite3';
 import dotenv from 'dotenv';
+import { normalizeNotice, similarNoticeContent } from './note-similarity.js';
 import { todayInTaipei, tomorrowInTaipei, nowIso } from './util/date.js';
 
 dotenv.config();
@@ -326,19 +327,27 @@ export const db = {
     /** Persist image identity and compare existing notices atomically, including legacy rows. */
     importFromImages(notes, imageHashes) {
       const imageKey = JSON.stringify([...new Set(imageHashes)].sort());
-      const normalize = value => value.normalize('NFKC').replace(/\s+/gu, '').trim();
+      const normalize = normalizeNotice;
       return sqlite.transaction(() => {
         if (sqlite.prepare('SELECT 1 FROM note_image_imports WHERE image_key = ?').get(imageKey)) {
           return { created: [], skipped: notes.length };
         }
         const existing = sqlite.prepare('SELECT * FROM general_notes').all();
         const created = [];
+        const similar = [];
         let skipped = 0;
         for (const note of notes) {
           let row = existing.find(row => normalize(note.content) && normalize(row.content) === normalize(note.content));
           if (row) {
             skipped++;
           } else {
+            const candidate = existing.find(row => similarNoticeContent(row.content, note.content));
+            if (candidate) {
+              // Do not save an image mapping: a similarity match needs review
+              // and is not proof that the new image is identical.
+              similar.push({ id: candidate.id, title: candidate.title });
+              continue;
+            }
             const info = sqlite.prepare('INSERT INTO general_notes (title, content, updated_at, updated_by) VALUES (?, ?, ?, ?)')
               .run(note.title, note.content, nowIso(), 'AI 晨會多圖整併');
             row = sqlite.prepare('SELECT * FROM general_notes WHERE id = ?').get(info.lastInsertRowid);
@@ -347,7 +356,7 @@ export const db = {
           }
           sqlite.prepare('INSERT OR IGNORE INTO note_image_imports (image_key, note_id) VALUES (?, ?)').run(imageKey, row.id);
         }
-        return { created, skipped };
+        return { created, skipped, similar };
       })();
     },
 

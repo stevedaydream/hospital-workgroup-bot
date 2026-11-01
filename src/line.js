@@ -803,7 +803,7 @@ async function triggerBatchProcess(sourceId, sessionKey) {
       });
     if (!unique.length) {
       updateJob(session.job, { stage: 'done', resultLabel: '已略過重複圖片' });
-      await pushMessage(sourceId, { type: 'text', text: '♻️ 這些圖片已建立過公告，已略過，未重複新增。' });
+      await pushMessage(sourceId, { type: 'text', text: `♻️ 這些圖片已建立過公告，已略過，未重複新增。\n公告目錄：https://liff.line.me/${LIFF_NOTES_ID}?groupId=${sourceId}` });
       return;
     }
     session.buffers = unique.map(item => item.buffer);
@@ -854,17 +854,21 @@ async function triggerBatchProcess(sourceId, sessionKey) {
     if (ocrResult.type === 'WARD_NOTE') {
       // --- 🔴 WARD_NOTE Pipeline: Auto-Create Notices ---
       const notes = Array.isArray(ocrResult.notes) ? ocrResult.notes : [];
-      const { created: addedNotes, skipped } = db.general_notes.importFromImages(
+      const { created: addedNotes, skipped, similar = [] } = db.general_notes.importFromImages(
         notes, session.buffers.map(buffer => crypto.createHash('sha256').update(buffer).digest('hex'))
       );
       if (skipped > 0) {
-        resultMessages.push({ type: 'text', text: `♻️ 已略過 ${skipped} 筆重複公告，未重複新增。` });
+        resultMessages.push({ type: 'text', text: `♻️ 已略過 ${skipped} 筆重複公告，未重複新增。\n公告目錄：https://liff.line.me/${LIFF_NOTES_ID}?groupId=${sourceId}` });
+      }
+      if (similar.length > 0) {
+        const titles = [...new Set(similar.map(note => note.title))].join('、');
+        resultMessages.push({ type: 'text', text: `⚠️ 疑似已有相同公告：${titles}\n已攔截 ${similar.length} 筆，尚未新增。請開啟目錄核對；若是新版規定，請編輯原公告更新。\nhttps://liff.line.me/${LIFF_NOTES_ID}?groupId=${sourceId}` });
       }
 
       if (addedNotes.length > 0) {
         const flexNotesCard = getAutoNotesAddedFlex(addedNotes, sourceId);
         resultMessages.push(flexNotesCard);
-      } else if (skipped === 0) {
+      } else if (skipped === 0 && similar.length === 0) {
         resultMessages.push({
           type: "text",
           text: "⚠️ AI 判斷此圖片為公告，但未能解析出任何具體公告項目。"

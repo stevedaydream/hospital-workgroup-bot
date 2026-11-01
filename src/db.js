@@ -319,6 +319,10 @@ export const db = {
 
   // --- General Notes API ---
   general_notes: {
+    hasImportedImage(hash) {
+      return !!sqlite.prepare(`SELECT 1 FROM note_image_imports, json_each(note_image_imports.image_key)
+        WHERE json_each.value = ? LIMIT 1`).get(hash);
+    },
     /** Persist image identity and compare existing notices atomically, including legacy rows. */
     importFromImages(notes, imageHashes) {
       const imageKey = JSON.stringify([...new Set(imageHashes)].sort());
@@ -331,7 +335,7 @@ export const db = {
         const created = [];
         let skipped = 0;
         for (const note of notes) {
-          let row = existing.find(row => normalize(row.title) === normalize(note.title) && normalize(row.content) === normalize(note.content));
+          let row = existing.find(row => normalize(note.content) && normalize(row.content) === normalize(note.content));
           if (row) {
             skipped++;
           } else {

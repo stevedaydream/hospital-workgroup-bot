@@ -793,6 +793,22 @@ async function triggerBatchProcess(sourceId, sessionKey) {
     await pushMessage(sourceId, disabledMessage('image_ai'));
     return;
   }
+  if (session.announcementOnly) {
+    const seen = new Set();
+    const unique = session.buffers.map((buffer, i) => ({ buffer, id: session.messageIds[i], hash: crypto.createHash('sha256').update(buffer).digest('hex') }))
+      .filter(({ hash }) => {
+        if (seen.has(hash) || db.general_notes.hasImportedImage(hash)) return false;
+        seen.add(hash);
+        return true;
+      });
+    if (!unique.length) {
+      updateJob(session.job, { stage: 'done', resultLabel: '已略過重複圖片' });
+      await pushMessage(sourceId, { type: 'text', text: '♻️ 這些圖片已建立過公告，已略過，未重複新增。' });
+      return;
+    }
+    session.buffers = unique.map(item => item.buffer);
+    session.messageIds = unique.map(item => item.id);
+  }
   console.log(`[Batch Process] Starting processing of ${session.buffers.length} images for ${sourceId}`);
 
   // Use the last uploaded image message ID as the reference

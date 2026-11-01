@@ -193,6 +193,8 @@ export async function runDailyReminders() {
  * VM left on UTC still fires at 07:30 Taiwan time.
  */
 export function initializeScheduler() {
+  db.note_reviews.pruneExpired();
+  cron.schedule('* * * * *', () => db.note_reviews.pruneExpired(), { timezone: 'Asia/Taipei' });
   cron.schedule(
     '30 7 * * *',
     async () => {

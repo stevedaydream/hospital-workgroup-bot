@@ -39,3 +39,19 @@ test('dismissal creates no notice and retains an audit record', () => {
   assert.equal(db.general_notes.hasImportedImage('discard-image'), false);
   assert.throws(() => db.note_reviews.resolve(review.id, 'invalid', 'reviewer'));
 });
+
+test('pending OCR expires after seven days while published notices remain', async () => {
+  const content = '開放血液腫瘤科、胸腔內科、感染科、一般外科、腎臟科、泌尿科使用，其他科別需經感染科授權。本週公告。';
+  db.general_notes.importFromImages([{ title: '七天暫存', content: content + '另外新增說明。' }], ['expiry-image']);
+  const review = db.note_reviews.list()[0];
+  assert.equal(Date.parse(review.expires_at) - Date.parse(review.created_at), 7 * 86400000);
+  const originalCount = (await db.general_notes.getAll()).length;
+  const now = Date.now;
+  try {
+    Date.now = () => Date.parse(review.created_at) + 7 * 86400000;
+    assert.equal(db.note_reviews.resolve(review.id, 'approve', 'reviewer'), null);
+    assert.equal(db.note_reviews.list().length, 0);
+    assert.equal((await db.general_notes.getAll()).length, originalCount);
+    assert.equal(sqlite.prepare('SELECT 1 FROM note_reviews WHERE id = ?').get(review.id), undefined);
+  } finally { Date.now = now; }
+});

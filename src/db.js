@@ -410,13 +410,20 @@ export const db = {
   },
 
   note_reviews: {
+    pruneExpired() {
+      return sqlite.prepare("DELETE FROM note_reviews WHERE status = 'pending' AND created_at <= ?")
+        .run(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()).changes;
+    },
     list() {
+      this.pruneExpired();
       return sqlite.prepare(`SELECT r.*, n.title AS candidate_title, n.content AS candidate_content
         FROM note_reviews r LEFT JOIN general_notes n ON n.id = r.candidate_id
-        WHERE r.status = 'pending' ORDER BY r.id DESC`).all();
+        WHERE r.status = 'pending' ORDER BY r.id DESC`).all()
+        .map(row => ({ ...row, expires_at: new Date(Date.parse(row.created_at) + 7 * 24 * 60 * 60 * 1000).toISOString() }));
     },
     resolve(id, action, by) {
       if (!['approve', 'dismiss'].includes(action)) throw new Error('無效操作');
+      this.pruneExpired();
       return sqlite.transaction(() => {
         const row = sqlite.prepare('SELECT * FROM note_reviews WHERE id = ?').get(id);
         if (!row) return null;

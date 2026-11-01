@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 process.env.SQLITE_PATH = ':memory:';
 const {db} = await import('../src/db.js');
-const {startReviewAi, reviewAiStatus} = await import('../src/review-ai.js');
+const {startReviewAi: startRealReviewAi, reviewAiStatus} = await import('../src/review-ai.js');
+const startReviewAi = (id, organize, options = {}) => startRealReviewAi(id, organize, { prepare: async () => {}, ...options });
 const flush = () => new Promise(resolve => setImmediate(resolve));
 
 test('AI draft preserves original, waits for confirmation and publishes edited text once', async () => {
@@ -38,4 +39,22 @@ test('failed AI retains the source and can be retried without publishing', async
   await flush();
   assert.equal(reviewAiStatus(review.id).status,'done');
   assert.equal((await db.general_notes.getAll()).length,1);
+});
+
+test('switch aborts old inference and prevents late old output replacing the new draft', async () => {
+  db.general_notes.importFromImages([{title:'切換測試',content:'保留原文切換模型'}],['switch-test'],{reviewOnly:true});
+  const review=db.note_reviews.list()[0];
+  let finishOld, oldSignal;
+  const organize=async(note,{model,signal})=>{
+    if(model==='qwen3.6'){oldSignal=signal;return new Promise(resolve=>finishOld=resolve);}
+    return {title:'Strata 草稿',content:'新模型整理結果'};
+  };
+  startReviewAi(review.id,organize);
+  await flush();
+  startReviewAi(review.id,organize,{model:'local',switchModel:true});
+  assert.equal(oldSignal.aborted,true);
+  finishOld({title:'過期草稿',content:'不得覆蓋'});
+  await flush();await flush();
+  assert.equal(reviewAiStatus(review.id).model,'local');
+  assert.equal(db.note_reviews.list()[0].draft_title,'Strata 草稿');
 });

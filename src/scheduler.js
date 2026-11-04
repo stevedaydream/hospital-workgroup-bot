@@ -2,13 +2,12 @@ import cron from 'node-cron';
 import dotenv from 'dotenv';
 import { db } from './db.js';
 import { pushMessage } from './line.js';
-import { todayInTaipei, daysBetween, dayOfWeek } from './util/date.js';
+import { todayInTaipei, daysBetween, dayOfWeek, addDays } from './util/date.js';
 import { medbaseEnabled, sendDueReminders, checkPublished } from './medbase.js';
 import { featureEnabled } from './features.js';
+import { signedImageUrl, pruneImages } from './images.js';
 
 dotenv.config();
-
-const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 
 /**
  * Runs the daily case distribution image dispatch.
@@ -40,9 +39,9 @@ export async function runDailyDispatch() {
     for (const groupId of Object.keys(uniqueDispatches)) {
       if (!featureEnabled(groupId, 'dispatch')) continue;
       const dispatch = uniqueDispatches[groupId];
-      const imageUrl = `${BASE_URL}/images/${dispatch.source_image_message_id}.jpg`;
+      const imageUrl = signedImageUrl(dispatch.source_image_message_id);
       
-      console.log(`[Scheduler] Dispatching image to group ${groupId}. URL: ${imageUrl}`);
+      console.log(`[Scheduler] Dispatching image ${dispatch.source_image_message_id} to group ${groupId}.`);
       
       await pushMessage(groupId, {
         type: 'image',
@@ -181,6 +180,13 @@ export async function runDailyReminders() {
   }
 }
 
+/** Daily cleanup of case-table photos; anything still queued for dispatch is kept. */
+async function pruneOldImages() {
+  const today = todayInTaipei();
+  const queued = [...await db.daily_dispatch_cache.getForDate(today), ...await db.daily_dispatch_cache.getForDate(addDays(today, 1))];
+  pruneImages(queued.map(d => d.source_image_message_id));
+}
+
 // ----------------------------------------------------
 // Cron Job Schedule
 // ----------------------------------------------------
@@ -205,6 +211,7 @@ export function initializeScheduler() {
     { timezone: 'Asia/Taipei' }
   );
   console.log('[Cron] Scheduler armed: every day at 07:30 Asia/Taipei.');
+  cron.schedule('0 3 * * *', () => pruneOldImages().catch(e => console.error('[Images] prune:', e.message)), { timezone: 'Asia/Taipei' });
 
   if (medbaseEnabled) {
     // Opt-in per group (admin page). Each group is pushed at most once a day.

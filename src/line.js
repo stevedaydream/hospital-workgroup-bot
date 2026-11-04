@@ -13,6 +13,7 @@ import { allAnnouncement } from './all-announcement.js';
 import { prepareLeaveAlias, leaveAliasPostback, leaveRegistrationReply } from './leave-alias.js';
 import { todayInTaipei, dayOfWeek, nextDispatchDate, dispatchMorningLabel } from './util/date.js';
 import { featureEnabled, disabledFeatureMessage as disabledMessage } from './features.js';
+import { IMAGES_DIR } from './images.js';
 
 dotenv.config();
 
@@ -38,9 +39,6 @@ function travelLiffUrl() {
     : `https://liff.line.me/${process.env.LIFF_CALENDAR_ID || 'placeholder_calendar_liff_id'}?page=travel`;
 }
 
-// Ensure directories exist
-const IMAGES_DIR = path.resolve('public/images');
-fs.mkdir(IMAGES_DIR, { recursive: true }).catch(console.error);
 
 // ----------------------------------------------------
 // Signature Verification

@@ -6,6 +6,8 @@ import { serve } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
 import dotenv from 'dotenv';
 import { execSync } from 'node:child_process';
+import fs from 'node:fs';
+import { imagePath, verifyImageLink } from './images.js';
 import { db } from './db.js';
 import { requireLiffAuth, requireAdminKey } from './auth.js';
 import { verifySignature, handleWebhookEvent, pushMessage, GROUP_WINDOW_MS } from './line.js';
@@ -773,6 +775,22 @@ app.get('/api/test-cron', async (c) => {
 // Served in every environment. On Cloudflare Workers this needed an [assets]
 // binding that was never configured, which is why the LIFF pages were
 // unreachable in production.
+// Case-table photos are not static files: LINE fetches them through a signed,
+// expiring link and the review page through the logged-in /api/images route.
+const sendImage = async (c, id) => {
+  const file = imagePath(id);
+  if (!file) return c.notFound();
+  const body = await fs.promises.readFile(file).catch(() => null);
+  if (!body) return c.notFound();
+  return c.body(body, 200, { 'Content-Type': 'image/jpeg', 'Cache-Control': 'private, no-store' });
+};
+app.get('/images/:file', (c) => {
+  const id = c.req.param('file').replace(/\.jpg$/, '');
+  if (!verifyImageLink(id, c.req.query('exp'), c.req.query('sig'))) return c.text('Forbidden', 403);
+  return sendImage(c, id);
+});
+app.get('/api/images/:id', (c) => sendImage(c, c.req.param('id')));
+
 app.use('/*', serveStatic({ root: './public' }));
 
 // ----------------------------------------------------

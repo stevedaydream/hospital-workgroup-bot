@@ -33,3 +33,6 @@ yarn-error.log*
 
 # Vercel CLI link for the relay
 .vercel/
+
+# Uploaded case-table photos (patient data) -- they live in data/images now
+public/images/

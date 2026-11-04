@@ -1,5 +1,5 @@
 import { parseTravel, calendarAbsences } from './travel.js';
-import { todayInTaipei } from './util/date.js';
+import { todayInTaipei, nextDispatchDate, dispatchMorningLabel } from './util/date.js';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { serve } from '@hono/node-server';
@@ -529,47 +529,34 @@ app.post('/api/dispatch-cache/confirm', async (c) => {
   if (!messageId) {
     return c.json({ error: 'Missing messageId' }, 400);
   }
+  const selected = Array.isArray(selectedGroups) ? selectedGroups : [];
+  const unselected = Array.isArray(unselectedGroups) ? unselectedGroups : [];
+  // A page that failed to load its list submits nothing; don't announce an empty schedule.
+  if (!selected.length && !unselected.length) {
+    return c.json({ error: '沒有任何轉發對象可以設定' }, 400);
+  }
+  const dispatchDate = nextDispatchDate();
   try {
-    if (selectedGroups && Array.isArray(selectedGroups)) {
-      for (const groupId of selectedGroups) {
-        await db.daily_dispatch_cache.add(groupId, messageId, true);
-      }
-    }
-    if (unselectedGroups && Array.isArray(unselectedGroups)) {
-      for (const groupId of unselectedGroups) {
-        await db.daily_dispatch_cache.remove(groupId);
-      }
-    }
-    
+    for (const groupId of selected) await db.daily_dispatch_cache.add(groupId, messageId, true, dispatchDate);
+    for (const groupId of unselected) await db.daily_dispatch_cache.remove(groupId, dispatchDate);
+
     if (sourceId) {
       const allMappings = await db.doctor_group_mapping.getAll();
-      const confirmedGroupNames = [];
-      
-      if (selectedGroups && Array.isArray(selectedGroups)) {
-        for (const groupId of selectedGroups) {
-          const mapping = allMappings.find(m => m.line_group_id === groupId);
-          if (mapping) {
-            confirmedGroupNames.push(mapping.group_name);
-          }
-        }
-      }
-      
-      const userStr = updatedBy || '同仁';
-      let confirmText = `✅ URO (泌尿科) 轉發對象設定成功！\n\n`;
-      if (confirmedGroupNames.length > 0) {
-        confirmText += `明早 07:30 將自動轉發分配表至：\n` + confirmedGroupNames.map(name => `• ${name}`).join('\n') + `\n\n`;
-      } else {
-        confirmText += `本日無勾選任何 URO 轉發對象，明早將不會向 URO 群組推送大表。\n\n`;
-      }
-      confirmText += `（設定同仁：${userStr}）`;
-      
+      const names = [...new Set(selected.map(id => allMappings.find(m => m.line_group_id === id)?.group_name).filter(Boolean))];
+      const when = `${dispatchMorningLabel(dispatchDate)} ${Number(dispatchDate.slice(5, 7))}/${Number(dispatchDate.slice(8, 10))} 07:30`;
+      let confirmText = `✅ Case 分配表轉發對象設定成功！\n\n`;
+      confirmText += names.length
+        ? `${when} 將自動轉發分配表至：\n` + names.map(name => `• ${name}`).join('\n') + `\n\n`
+        : `這次沒有勾選任何轉發對象，${when} 不會轉發分配表。\n\n`;
+      confirmText += `（設定同仁：${updatedBy || '同仁'}）`;
+
       await pushMessage(sourceId, {
         type: 'text',
         text: confirmText
       });
     }
-    
-    return c.json({ success: true });
+
+    return c.json({ success: true, dispatchDate });
   } catch (error) {
     return c.json({ error: error.message }, 500);
   }

@@ -11,7 +11,7 @@ import { selfPayPage } from './self-pay.js';
 import { parseLeaveMessage } from './leave-message.js';
 import { allAnnouncement } from './all-announcement.js';
 import { prepareLeaveAlias, leaveAliasPostback, leaveRegistrationReply } from './leave-alias.js';
-import { todayInTaipei, dayOfWeek } from './util/date.js';
+import { todayInTaipei, dayOfWeek, nextDispatchDate, dispatchMorningLabel } from './util/date.js';
 import { featureEnabled, disabledFeatureMessage as disabledMessage } from './features.js';
 
 dotenv.config();
@@ -435,7 +435,7 @@ function getOcrSummaryFlex(dispatchedGroups, hasUro, messageId, sourceId, dateWa
   if (dispatchedGroups.length > 0) {
     contents.push({
       type: "text",
-      text: "【已自動排程明早 07:30 轉發】：",
+      text: `【已自動排程${dispatchMorningLabel(nextDispatchDate())} 07:30 轉發】：`,
       color: "#4f5d68",
       size: "xs",
       margin: "md",
@@ -1238,14 +1238,14 @@ export async function handleWebhookEvent(event) {
           await db.daily_dispatch_cache.remove(sourceId);
           await replyMessage(event.replyToken, {
             type: "text",
-            text: "❌ 已取消此群組明早 07:30 的 Case 分配表自動轉發任務。"
+            text: `❌ 已取消此群組${dispatchMorningLabel(nextDispatchDate())} 07:30 的 Case 分配表自動轉發任務。`
           });
         }
       } else if (text === '清空轉發' || text === '取消今日轉發') {
         await db.daily_dispatch_cache.clearAll();
         await replyMessage(event.replyToken, {
           type: "text",
-          text: "🗑️ 已成功清空今日所有科室的分配表自動轉發排程，明早將不會發送任何圖片。"
+          text: `🗑️ 已成功清空所有科室的分配表自動轉發排程，${dispatchMorningLabel(nextDispatchDate())} 07:30 將不會發送任何圖片。`
         });
       } else if (text.toUpperCase() === 'ID' || text === '群組ID' || text === '查詢ID') {
         if (sourceId) {

@@ -11,7 +11,7 @@
     <div class="header">
       <div class="header-icon">🔍</div>
       <h1>今日轉發名單審查</h1>
-      <p>請確認明早 07:30 分流轉發對象，AI 辨識結果已自動預填</p>
+      <p>請確認<span class="dispatch-when">下一次</span> 07:30 分流轉發對象，AI 辨識結果已自動預填</p>
     </div>
 
     <!-- Image Preview from Web Server -->
@@ -33,7 +33,7 @@
 
     <button class="btn-primary" id="btn-submit" onclick="submitDispatch()">
       <span class="spinner" id="btn-spinner"></span>
-      <span id="btn-text">確認轉發名單 (於明早 07:30 發送)</span>
+      <span id="btn-text">確認轉發名單 (於<span class="dispatch-when">下一次</span> 07:30 發送)</span>
     </button>
   </div>
 
@@ -52,6 +52,14 @@
       dept: '',
       sourceId: ''
     };
+
+    // Same rule as nextDispatchDate() on the server: before 07:30 Taiwan time the next run is this morning.
+    function dispatchWhen() {
+      const [h, m] = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Taipei', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+        .format(new Date()).split(':').map(Number);
+      return h * 60 + m < 7 * 60 + 30 ? '今早' : '明早';
+    }
+    document.querySelectorAll('.dispatch-when').forEach(el => { el.textContent = dispatchWhen(); });
 
     function showToast(message, isError = false) {
       const toast = document.getElementById('toast-notify');
@@ -179,6 +187,10 @@
 
     async function submitDispatch() {
       const checkboxes = document.querySelectorAll('.doctor-checkbox');
+      if (!checkboxes.length) {
+        showToast('名單尚未載入，請重新開啟此頁', true);
+        return;
+      }
       const selectedGroups = [];
       const unselectedGroups = [];
 
@@ -226,7 +238,7 @@
       } catch (error) {
         showToast('設定失敗：' + error.message, true);
       } finally {
-        btnText.innerText = '確認轉發名單 (於明早 07:30 發送)';
+        btnText.innerText = `確認轉發名單 (於${dispatchWhen()} 07:30 發送)`;
         spinner.style.display = 'none';
         document.getElementById('btn-submit').disabled = false;
       }

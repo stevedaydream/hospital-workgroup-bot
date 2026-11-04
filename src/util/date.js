@@ -35,6 +35,23 @@ export function tomorrowInTaipei() {
   return addDays(todayInTaipei(), 1);
 }
 
+/**
+ * The morning the next 07:30 dispatch runs: today while it is still before
+ * 07:30 in Taiwan (a table uploaded after midnight is for this morning), else
+ * tomorrow.
+ */
+export function nextDispatchDate(at = new Date()) {
+  const [h, m] = new Intl.DateTimeFormat('en-GB', { timeZone: TAIPEI_TZ, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+    .format(at).split(':').map(Number);
+  const today = todayInTaipei(at);
+  return h * 60 + m < 7 * 60 + 30 ? today : addDays(today, 1);
+}
+
+/** '今早' or '明早' for a dispatch date, as the user sees it now. */
+export function dispatchMorningLabel(dispatchDate, at = new Date()) {
+  return dispatchDate === todayInTaipei(at) ? '今早' : '明早';
+}
+
 /** Whole days from `fromDateStr` to `toDateStr` (both YYYY-MM-DD). */
 export function daysBetween(fromDateStr, toDateStr) {
   const from = new Date(`${fromDateStr}T00:00:00Z`).getTime();

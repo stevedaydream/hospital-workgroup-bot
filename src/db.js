@@ -14,7 +14,7 @@ import path from 'path';
 import Database from 'better-sqlite3';
 import dotenv from 'dotenv';
 import { normalizeNotice, similarNoticeContent } from './note-similarity.js';
-import { todayInTaipei, tomorrowInTaipei, nowIso } from './util/date.js';
+import { todayInTaipei, nextDispatchDate, nowIso } from './util/date.js';
 
 dotenv.config();
 
@@ -530,12 +530,12 @@ export const db = {
       return this.getForDate(todayInTaipei());
     },
 
-    /** What is queued for tomorrow morning -- i.e. awaiting confirmation today. */
+    /** What is queued for the next 07:30 run -- i.e. still awaiting confirmation. */
     async getPending() {
-      return this.getForDate(tomorrowInTaipei());
+      return this.getForDate(nextDispatchDate());
     },
 
-    async add(targetLineGroupId, sourceImageMessageId, isConfirmed, dispatchDate = tomorrowInTaipei()) {
+    async add(targetLineGroupId, sourceImageMessageId, isConfirmed, dispatchDate = nextDispatchDate()) {
       sqlite
         .prepare(
           `INSERT INTO daily_dispatch_cache
@@ -554,7 +554,7 @@ export const db = {
       );
     },
 
-    async remove(targetLineGroupId, dispatchDate = tomorrowInTaipei()) {
+    async remove(targetLineGroupId, dispatchDate = nextDispatchDate()) {
       sqlite
         .prepare('DELETE FROM daily_dispatch_cache WHERE dispatch_date = ? AND target_line_group_id = ?')
         .run(dispatchDate, targetLineGroupId);

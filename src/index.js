@@ -99,7 +99,7 @@ app.post('/integrations/medbase', async (c) => {
   }
   try {
     const notice = JSON.parse(rawBody);
-    const delivered = await deliverNotice(notice, pushMessage);
+    const delivered = await deliverNotice(notice, (to, m) => pushMessage(to, m, 'MedBase 換班通知'));
     console.log(`[MedBase] ${notice.event} delivered to ${delivered} LINE account(s)`);
     return c.json({ ok: true, delivered });
   } catch (error) {
@@ -477,6 +477,19 @@ app.get('/api/medbase/groups', async (c) => {
   });
 });
 
+// Why the bot pushed this month, so the admin page can show what eats the quota.
+app.get('/api/push-log', async (c) => {
+  const monthStart = new Date(`${todayInTaipei().slice(0, 7)}-01T00:00:00+08:00`).toISOString();
+  const groupNames = new Map(db.line_groups.getAll().map(g => [g.line_group_id, g.group_name]));
+  const userNames = new Map((await db.users.getAll()).map(u => [u.line_user_id, u.display_name]));
+  const nameOf = id => groupNames.get(id) || userNames.get(id) || (id.startsWith('U') ? '個人私訊' : '未命名群組');
+  return c.json({
+    quota: await getPushQuota(),
+    summary: db.push_log.summarySince(monthStart),
+    recent: db.push_log.recent(50).map(r => ({ ...r, target_name: nameOf(r.target) }))
+  });
+});
+
 app.put('/api/medbase/groups/:lineGroupId', async (c) => {
   const lineGroupId = c.req.param('lineGroupId');
   const body = await c.req.json().catch(() => ({}));
@@ -555,7 +568,7 @@ app.post('/api/dispatch-cache/confirm', async (c) => {
       await pushMessage(sourceId, {
         type: 'text',
         text: confirmText
-      });
+      }, 'Case 表轉發設定確認');
     }
 
     return c.json({ success: true, dispatchDate });

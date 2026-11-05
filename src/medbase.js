@@ -183,7 +183,7 @@ export async function medbaseCommand(text, source, on = () => true) {
     // to the 1:1 chat (one billed push) and the group only sees a short note.
     // Imported lazily: line.js imports this module.
     const { pushMessage } = await import('./line.js');
-    await pushMessage(userId, message);
+    await pushMessage(userId, message, '我的班私訊');
     return { type: 'text', text: '🔒 你的班表已私訊給你。\n若沒有收到，請先將「醫院群組助手」加為好友。' };
   }
 

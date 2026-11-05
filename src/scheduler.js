@@ -40,14 +40,14 @@ export async function runDailyDispatch() {
       if (!featureEnabled(groupId, 'dispatch')) continue;
       const dispatch = uniqueDispatches[groupId];
       const imageUrl = signedImageUrl(dispatch.source_image_message_id);
-      
+
       console.log(`[Scheduler] Dispatching image ${dispatch.source_image_message_id} to group ${groupId}.`);
       
       await pushMessage(groupId, {
         type: 'image',
         originalContentUrl: imageUrl,
         previewImageUrl: imageUrl
-      });
+      }, 'Case 表轉發');
       
       sendCount++;
     }
@@ -170,7 +170,7 @@ export async function runDailyReminders() {
             }
 
             console.log(`[Scheduler] Pushing cross-group reminder to group ${targetGroupId} for ${docName}`);
-            await pushMessage(targetGroupId, messageObj);
+            await pushMessage(targetGroupId, messageObj, '晨會報告提醒');
           }
         }
       }
@@ -215,8 +215,8 @@ export function initializeScheduler() {
 
   if (medbaseEnabled) {
     // Opt-in per group (admin page). Each group is pushed at most once a day.
-    cron.schedule('* * * * *', () => sendDueReminders(pushMessage).catch(e => console.error('[MedBase] reminders:', e.message)), { timezone: 'Asia/Taipei' });
-    cron.schedule('*/10 * * * *', () => checkPublished(pushMessage).catch(e => console.error('[MedBase] publish check:', e.message)), { timezone: 'Asia/Taipei' });
+    cron.schedule('* * * * *', () => sendDueReminders((to, m) => pushMessage(to, m, 'MedBase 值班提醒')).catch(e => console.error('[MedBase] reminders:', e.message)), { timezone: 'Asia/Taipei' });
+    cron.schedule('*/10 * * * *', () => checkPublished((to, m) => pushMessage(to, m, 'MedBase 班表發布')).catch(e => console.error('[MedBase] publish check:', e.message)), { timezone: 'Asia/Taipei' });
     console.log('[Cron] MedBase duty reminders (every minute) and publish checks (every 10 min) armed.');
   }
 }

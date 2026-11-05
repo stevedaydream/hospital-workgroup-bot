@@ -81,7 +81,34 @@ export async function replyMessage(replyToken, messages) {
   }
 }
 
-export async function pushMessage(to, messages) {
+// Group sizes change rarely; cache them so logging a push does not add a LINE call each time.
+const memberCountCache = new Map();
+const MEMBER_COUNT_TTL_MS = 6 * 60 * 60 * 1000;
+async function pushCost(to) {
+  if (to.startsWith('U')) return 1;
+  const hit = memberCountCache.get(to);
+  if (hit && hit.at > Date.now() - MEMBER_COUNT_TTL_MS) return hit.count;
+  const count = await getGroupMemberCount(to);
+  if (count != null) memberCountCache.set(to, { count, at: Date.now() });
+  return count;
+}
+
+/**
+ * Pushes count against the monthly quota (replies do not), so every push is
+ * logged with why it was sent. LINE bills one per recipient however many
+ * message objects one request carries, so a group costs its member count.
+ */
+export async function pushMessage(to, messages, reason = '其他') {
+  const list = Array.isArray(messages) ? messages : [messages];
+  const result = await sendPush(to, list);
+  const ok = result === true;
+  const cost = ok ? await pushCost(to).catch(() => null) : null;
+  try { db.push_log.add({ reason, target: to, messages: list.length, cost, ok, error: ok ? null : result }); }
+  catch (logError) { console.error('[Push log]', logError.message); }
+}
+
+/** Returns true when LINE accepted the push, otherwise the error text. */
+async function sendPush(to, messages) {
   try {
     const response = await fetch('https://api.line.me/v2/bot/message/push', {
       method: 'POST',
@@ -91,16 +118,19 @@ export async function pushMessage(to, messages) {
       },
       body: JSON.stringify({
         to,
-        messages: Array.isArray(messages) ? messages : [messages]
+        messages
       })
     });
-    
+
     if (!response.ok) {
       const errorText = await response.text();
       console.error(`LINE push error to ${to}:`, errorText);
+      return `HTTP ${response.status} ${errorText}`;
     }
+    return true;
   } catch (error) {
     console.error(`Error sending LINE push to ${to}:`, error);
+    return error.message;
   }
 }
 
@@ -789,7 +819,7 @@ async function triggerBatchProcess(sourceId, sessionKey) {
   imageUploadIntents.delete(sessionKey);
   if (!featureEnabled(sourceId, 'image_ai')) {
     updateJob(session.job, { stage: 'done', resultLabel: '功能已關閉' });
-    await pushMessage(sourceId, disabledMessage('image_ai'));
+    await pushMessage(sourceId, disabledMessage('image_ai'), '功能關閉提示');
     return;
   }
   if (session.announcementOnly) {
@@ -802,7 +832,7 @@ async function triggerBatchProcess(sourceId, sessionKey) {
       });
     if (!unique.length) {
       updateJob(session.job, { stage: 'done', resultLabel: '已略過重複圖片' });
-      await pushMessage(sourceId, { type: 'text', text: `♻️ 這些圖片已建立過公告，已略過，未重複新增。\n公告目錄：https://liff.line.me/${LIFF_NOTES_ID}?groupId=${sourceId}` });
+      await pushMessage(sourceId, { type: 'text', text: `♻️ 這些圖片已建立過公告，已略過，未重複新增。\n公告目錄：https://liff.line.me/${LIFF_NOTES_ID}?groupId=${sourceId}` }, '圖片重複略過');
       return;
     }
     session.buffers = unique.map(item => item.buffer);
@@ -835,7 +865,7 @@ async function triggerBatchProcess(sourceId, sessionKey) {
 
     if (!featureEnabled(sourceId, 'image_ai')) {
       updateJob(job, { stage: 'done', resultLabel: '功能已關閉' });
-      await pushMessage(sourceId, disabledMessage('image_ai'));
+      await pushMessage(sourceId, disabledMessage('image_ai'), '功能關閉提示');
       return;
     }
 
@@ -969,7 +999,7 @@ async function triggerBatchProcess(sourceId, sessionKey) {
 
     const RESULT_LABELS = { WARD_NOTE: '病房公告', CALENDAR: '行事曆', CASE_TABLE: 'Case 分配表' };
     updateJob(job, { stage: 'done', resultLabel: RESULT_LABELS[ocrResult.type] || '無法辨識' });
-    await pushMessage(sourceId, resultMessages);
+    await pushMessage(sourceId, resultMessages, '圖片辨識結果');
   } catch (error) {
     stage.stop();
     console.error('Error processing batch images:', error);
@@ -977,7 +1007,7 @@ async function triggerBatchProcess(sourceId, sessionKey) {
     await pushMessage(sourceId, {
       type: "text",
       text: `❌ 圖片整併分析失敗，錯誤原因：${error.message}`
-    });
+    }, '圖片辨識失敗');
   }
 }
 
@@ -1034,7 +1064,7 @@ export async function handleWebhookEvent(event) {
       await triggerBatchProcess(sourceId, jobKey);
     } catch (error) {
       updateJob(job, { stage: 'failed', error: error.message });
-      await pushMessage(sourceId, { type: 'text', text: '圖片讀取失敗，請重新傳送並選擇新增公告。' });
+      await pushMessage(sourceId, { type: 'text', text: '圖片讀取失敗，請重新傳送並選擇新增公告。' }, '圖片讀取失敗');
     }
     return;
   }

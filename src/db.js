@@ -20,6 +20,7 @@ dotenv.config();
 
 const DB_PATH = process.env.SQLITE_PATH || path.resolve('data/hospital.db');
 const DISPATCH_RETENTION_DAYS = 60;
+const PUSH_LOG_RETENTION_DAYS = 180;
 
 fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
 
@@ -219,6 +220,22 @@ for (const column of ['draft_title', 'draft_content']) {
     sqlite.exec(`ALTER TABLE note_reviews ADD COLUMN ${column} TEXT`);
   }
 }
+
+// Every proactive push: why it was sent, to whom, and roughly what it cost.
+sqlite.exec(`
+  CREATE TABLE IF NOT EXISTS push_log (
+    id       INTEGER PRIMARY KEY AUTOINCREMENT,
+    sent_at  TEXT NOT NULL,
+    reason   TEXT NOT NULL,
+    target   TEXT NOT NULL,
+    messages INTEGER NOT NULL,
+    cost     INTEGER,
+    ok       INTEGER NOT NULL,
+    error    TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_push_log_sent ON push_log (sent_at);
+`);
+sqlite.prepare("DELETE FROM push_log WHERE sent_at < datetime('now', ?)").run(`-${PUSH_LOG_RETENTION_DAYS} days`);
 
 // Old rows have no operational value and only make the confirmation UI noisy.
 sqlite
@@ -821,6 +838,26 @@ export const db = {
 
     setVersions(lineGroupId, versions) {
       sqlite.prepare('UPDATE medbase_groups SET last_versions = ? WHERE line_group_id = ?').run(JSON.stringify(versions), lineGroupId);
+    }
+  },
+
+  push_log: {
+    add({ reason, target, messages, cost, ok, error }) {
+      sqlite
+        .prepare('INSERT INTO push_log (sent_at, reason, target, messages, cost, ok, error) VALUES (?, ?, ?, ?, ?, ?, ?)')
+        .run(new Date().toISOString(), reason, target, messages, cost ?? null, ok ? 1 : 0, error ? String(error).slice(0, 300) : null);
+    },
+    recent(limit = 50) {
+      return sqlite.prepare('SELECT * FROM push_log ORDER BY id DESC LIMIT ?').all(limit)
+        .map(r => ({ ...r, ok: Boolean(r.ok) }));
+    },
+    /** Pushes per reason since `sinceIso`; failed pushes are counted apart since LINE does not bill them. */
+    summarySince(sinceIso) {
+      return sqlite.prepare(
+        `SELECT reason, COUNT(*) AS pushes, SUM(ok) AS sent, SUM(CASE WHEN ok THEN cost END) AS cost,
+                SUM(CASE WHEN ok AND cost IS NULL THEN 1 ELSE 0 END) AS unknown_cost
+           FROM push_log WHERE sent_at >= ? GROUP BY reason ORDER BY cost DESC, pushes DESC`
+      ).all(sinceIso);
     }
   },
 

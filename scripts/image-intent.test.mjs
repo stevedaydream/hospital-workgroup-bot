@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 
-test('photos offer consent without downloading; consent buttons are sender-bound', () => {
+test('photos offer consent without downloading; only the uploader can start a multi-photo batch', () => {
   const result = spawnSync(process.execPath, ['--input-type=module', '-e', `
     import assert from 'node:assert/strict';
     const {handleWebhookEvent} = await import('./src/line.js');
@@ -21,7 +21,7 @@ test('photos offer consent without downloading; consent buttons are sender-bound
     assert.equal(replies.length,2);
     const data = replies[1].quickReply.items[1].action.data;
     await handleWebhookEvent({type:'postback',replyToken:'test',source:{...source,userId:'other'},postback:{data}});
-    assert.match(replies.at(-1).text,/非您/);
+    assert.match(replies.at(-1).text,/上傳的人/);
     await handleWebhookEvent({type:'postback',replyToken:'test',source,postback:{data}});
     assert.match(replies.at(-1).text,/完成並建立/);
     await photo('three');

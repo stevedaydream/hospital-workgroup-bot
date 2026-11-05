@@ -263,7 +263,14 @@
           `;
           container.insertAdjacentHTML('beforeend', itemHtml);
         });
-        container.querySelectorAll('.doctor-checkbox').forEach(cb => cb.addEventListener('change', refreshSummary));
+        // Several doctors can map to one group, but the group gets the table once: keep
+        // that group's switches in step, or turning one off would drop the whole group.
+        container.querySelectorAll('.doctor-checkbox').forEach(cb => cb.addEventListener('change', () => {
+          container.querySelectorAll('.doctor-checkbox').forEach(other => {
+            if (other.dataset.groupId === cb.dataset.groupId) other.checked = cb.checked;
+          });
+          refreshSummary();
+        }));
         refreshSummary();
 
       } catch (error) {
@@ -284,11 +291,11 @@
 
       checkboxes.forEach(cb => {
         const groupId = cb.getAttribute('data-group-id');
-        if (cb.checked) {
-          selectedGroups.push(groupId);
-        } else {
-          unselectedGroups.push(groupId);
-        }
+        if (cb.checked) selectedGroups.push(groupId);
+      });
+      checkboxes.forEach(cb => {
+        const groupId = cb.getAttribute('data-group-id');
+        if (!selectedGroups.includes(groupId) && !unselectedGroups.includes(groupId)) unselectedGroups.push(groupId);
       });
 
       const btnText = document.getElementById('btn-text');

@@ -16,7 +16,7 @@
     <div class="header">
       <div class="header-icon">🔍</div>
       <h1>今日轉發名單審查</h1>
-      <p>請確認<span class="dispatch-when">下一次</span> 07:30 分流轉發對象，AI 辨識結果已自動預填</p>
+      <p>請確認這張分配表要給哪些群組，AI 辨識結果已自動預填</p>
     </div>
 
     <!-- Image Preview from Web Server -->
@@ -27,7 +27,7 @@
 
     <div class="share-box" id="share-box">
       <button class="btn-primary" id="btn-share" onclick="shareTable()">📤 分享分配表到群組</button>
-      <p class="share-hint">在 LINE 選擇要傳送的群組，圖片會以你的名義送出，<b>不扣機器人推播額度</b>。你必須是該群組的成員。</p>
+      <p class="share-hint">LINE 不允許預先勾選，請在分享畫面搜尋並勾選下列群組，圖片會以你的名義送出，<b>不扣機器人推播額度</b>。你必須是該群組的成員。</p>
       <p class="share-hint" id="share-targets"></p>
     </div>
 
@@ -44,7 +44,7 @@
 
     <button class="btn-primary" id="btn-submit" onclick="submitDispatch()">
       <span class="spinner" id="btn-spinner"></span>
-      <span id="btn-text">確認轉發名單 (自動推播群組於<span class="dispatch-when">下一次</span> 07:30 發送)</span>
+      <span id="btn-text">確認轉發名單</span>
     </button>
   </div>
 
@@ -148,6 +148,36 @@
     function toggleAll(checked) {
       const checkboxes = document.querySelectorAll('.doctor-checkbox');
       checkboxes.forEach(cb => cb.checked = checked);
+      refreshSummary();
+    }
+
+    // The switches only choose who this table is for. Groups with auto-push get it from
+    // the bot at 07:30; every other chosen group must be shared by hand (LINE cannot
+    // pre-select share targets), so the page lists them and labels the button to match.
+    function chosenGroups() {
+      const seen = new Map();
+      document.querySelectorAll('.doctor-checkbox:checked').forEach(cb => {
+        seen.set(cb.dataset.groupId, { name: cb.dataset.name, auto: cb.dataset.auto === '1' });
+      });
+      return [...seen.values()];
+    }
+
+    function shareNames() {
+      return chosenGroups().filter(g => !g.auto).map(g => g.name);
+    }
+
+    function refreshSummary() {
+      const groups = chosenGroups();
+      const share = shareNames();
+      const auto = groups.filter(g => g.auto).map(g => g.name);
+      document.getElementById('share-targets').textContent = share.length
+        ? `請分享到：${share.join('、')}`
+        : '目前沒有需要手動分享的群組。';
+      document.getElementById('btn-text').innerText = !groups.length
+        ? '確認轉發名單（不傳送給任何群組）'
+        : auto.length
+          ? `確認轉發名單（${auto.join('、')} 於${dispatchWhen()} 07:30 自動推播）`
+          : '確認轉發名單（不會自動發送，確認後請按分享）';
     }
 
     // Initialize LIFF
@@ -202,10 +232,6 @@
         const activeGroupIds = activeCaches.map(c => c.target_line_group_id);
 
         container.innerHTML = '';
-        const shareNames = mappings.filter(m => !m.auto_push && activeGroupIds.includes(m.line_group_id)).map(m => m.group_name);
-        document.getElementById('share-targets').textContent = shareNames.length
-          ? `這張分配表要分享到：${[...new Set(shareNames)].join('、')}`
-          : '';
         
         // Sort mappings so checked ones (AI identified) appear first
         mappings.sort((a, b) => {
@@ -230,13 +256,15 @@
                 <span class="doctor-group">比對金鑰: ${escapeHtml(map.match_key)}</span>
               </div>
               <label class="switch">
-                <input type="checkbox" class="doctor-checkbox" data-group-id="${map.line_group_id}" ${isChecked ? 'checked' : ''}>
+                <input type="checkbox" class="doctor-checkbox" data-group-id="${escapeHtml(map.line_group_id)}" data-name="${escapeHtml(map.group_name)}" data-auto="${map.auto_push ? '1' : '0'}" ${isChecked ? 'checked' : ''}>
                 <span class="slider"></span>
               </label>
             </div>
           `;
           container.insertAdjacentHTML('beforeend', itemHtml);
         });
+        container.querySelectorAll('.doctor-checkbox').forEach(cb => cb.addEventListener('change', refreshSummary));
+        refreshSummary();
 
       } catch (error) {
         console.error('Failed to load mappings', error);
@@ -286,21 +314,24 @@
         if (response.ok) {
           const data = await response.json().catch(() => ({}));
           if (data.confirmText) await postToChat(data.confirmText);
-          showToast('分流名單更新成功！');
-          
-          // Auto close LIFF window after a short delay
-          setTimeout(() => {
-            if (liff.isInClient()) {
-              liff.closeWindow();
-            }
-          }, 1500);
+          const share = shareNames();
+          if (share.length) {
+            // Keep the page open: the table still has to be shared by hand.
+            showToast(`已儲存，請按「分享」傳到：${share.join('、')}`);
+            const box = document.getElementById('share-box');
+            box.classList.add('highlight');
+            box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          } else {
+            showToast('分流名單更新成功！');
+            setTimeout(() => { if (liff.isInClient()) liff.closeWindow(); }, 1500);
+          }
         } else {
           showToast('伺服器處理錯誤', true);
         }
       } catch (error) {
         showToast('設定失敗：' + error.message, true);
       } finally {
-        btnText.innerText = `確認轉發名單 (自動推播群組於${dispatchWhen()} 07:30 發送)`;
+        refreshSummary();
         spinner.style.display = 'none';
         document.getElementById('btn-submit').disabled = false;
       }

@@ -6,6 +6,7 @@ import { todayInTaipei, daysBetween, dayOfWeek, addDays } from './util/date.js';
 import { medbaseEnabled, sendDueReminders, checkPublished } from './medbase.js';
 import { featureEnabled } from './features.js';
 import { signedImageUrl, pruneImages } from './images.js';
+import { runCourseReminders } from './shared-announcement.js';
 
 dotenv.config();
 
@@ -199,6 +200,8 @@ async function pruneOldImages() {
  * VM left on UTC still fires at 07:30 Taiwan time.
  */
 export function initializeScheduler() {
+  runCourseReminders().catch(error => console.error('[Course reminders]', error.message));
+  cron.schedule('* * * * *', () => runCourseReminders().catch(error => console.error('[Course reminders]', error.message)), { timezone: 'Asia/Taipei' });
   db.note_reviews.pruneExpired();
   cron.schedule('* * * * *', () => db.note_reviews.pruneExpired(), { timezone: 'Asia/Taipei' });
   cron.schedule(

@@ -10,6 +10,7 @@ import { medbaseCommand, medbaseEnabled, MEDBASE_APP_URL, selfPayCommand } from 
 import { selfPayPage } from './self-pay.js';
 import { parseLeaveMessage } from './leave-message.js';
 import { allAnnouncement } from './all-announcement.js';
+import { collectShared, handleSharedCommand, handleSharedPostback, SHARED_COMMANDS } from './shared-announcement.js';
 import { prepareLeaveAlias, leaveAliasPostback, leaveRegistrationReply } from './leave-alias.js';
 import { todayInTaipei, dayOfWeek, nextDispatchDate, dispatchMorningLabel } from './util/date.js';
 import { featureEnabled, disabledFeatureMessage as disabledMessage } from './features.js';
@@ -212,6 +213,7 @@ function quickMenuText(text, sourceId) {
     medbaseEnabled && on('duty') && item("📋 近期值班", "近期值班"),
     medbaseEnabled && on('my_schedule') && item("🗓 我的班", "我的班"),
     on('calendar') && item("📅 今日行程", "今日行程"),
+    on('notes') && item("📝 整理公告", "整理公告"),
     on('travel') && item("休假/出國", "出國"),
     on('medbase_lookup') && item("MedBase 查詢", "MedBase 查詢"),
     on('menu') && item("📖 主選單", "主選單")
@@ -1016,6 +1018,27 @@ async function triggerBatchProcess(sourceId, sessionKey) {
 // ----------------------------------------------------
 export async function handleWebhookEvent(event) {
   const sourceIdForGate = event.source?.groupId || event.source?.roomId || event.source?.userId;
+  if (event.type === 'postback' && event.postback?.data?.startsWith('sharednotice:')) {
+    await handleSharedPostback(event.postback.data, sourceIdForGate, event.source?.userId, messages => replyMessage(event.replyToken, messages));
+    return;
+  }
+  if (event.type === 'message' && event.message?.type === 'text' && SHARED_COMMANDS.includes(event.message.text.trim())) {
+    await handleSharedCommand(event.message.text.trim(), sourceIdForGate, event.source?.userId, {
+      reply: messages => replyMessage(event.replyToken, messages), push: pushMessage
+    });
+    return;
+  }
+  if (event.type === 'message' && featureEnabled(sourceIdForGate, 'notes')) {
+    // LINE does not identify forwarded text; keep a short sender-scoped buffer, with no AI or downloads here.
+    if (event.message?.type === 'file') {
+      collectShared(sourceIdForGate, event.source?.userId, event.message);
+      await replyMessage(event.replyToken, { type: 'text', text: '已暫存檔案資訊。傳完文字、檔案或連結後，15 分鐘內輸入「整理公告」。確認前不下載檔案；支援 PDF、DOCX、XLSX、TXT／CSV，每檔 10 MB。' });
+      return;
+    }
+    if (event.message?.type === 'text' && !commandFeature(event.message.text.trim()) && !allAnnouncement(event.message)) {
+      collectShared(sourceIdForGate, event.source?.userId, event.message);
+    }
+  }
   const gatedFeature = event.type === 'message'
     ? (event.message?.type === 'image' ? 'image_ai' : event.message?.type === 'text' ? commandFeature(event.message.text.trim()) : null)
     : event.type === 'postback'

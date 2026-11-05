@@ -10,6 +10,15 @@ test('direct photo upload offers classification separately from forced announcem
   assert.equal(chooseImage(announcement.quickReply.items[0].action.data, 'case-chat', 'sender').announcementOnly, true);
 });
 
+test('anyone in the chat can act on a photo, but only the uploader can start a multi-photo batch', () => {
+  const prompt = offerImage('shared-chat', 'uploader', 'case');
+  const [single, multi, recognize] = prompt.quickReply.items.map(i => i.action.data);
+  assert.equal(chooseImage(multi, 'shared-chat', 'colleague').ids, undefined);
+  assert.equal(chooseImage(recognize, 'elsewhere', 'colleague').ids, undefined);
+  assert.deepEqual(chooseImage(recognize, 'shared-chat', 'colleague'), { ids: ['case'], announcementOnly: false });
+  assert.equal(chooseImage(single, 'shared-chat', 'uploader').ids, undefined, 'consumed once by whoever pressed first');
+});
+
 test('ignoring a chat photo does not suppress the next photo or include it in a batch', () => {
   const wedding = offerImage('new-chat', 'sender', 'wedding');
   const notice = offerImage('new-chat', 'sender', 'notice');

@@ -36,7 +36,10 @@ export function offerImage(sourceId, userId, messageId) {
 export function chooseImage(data, sourceId, userId) {
   const [, token, mode] = data.split(':');
   const item = pending.get(token);
-  if (!item || item.sourceId !== sourceId || item.userId !== userId || item.expires <= Date.now()) return { message: { type: 'text', text: '圖片選項已過期或非您上傳的圖片，請重新傳送。' } };
+  if (!item || item.sourceId !== sourceId || item.expires <= Date.now()) return { message: { type: 'text', text: '圖片選項已過期，請重新傳送。' } };
+  // Anyone in the chat may act on a photo; only collecting more photos belongs to the uploader,
+  // because the follow-up photos are matched by who sends them.
+  if (mode === 'multi' && item.userId !== userId) return { message: { type: 'text', text: '連續圖片公告需由上傳的人操作。' } };
   if (mode === 'multi' && item.mode === 'pending') {
     item.mode = 'multi';
     item.expires = Date.now() + TTL;

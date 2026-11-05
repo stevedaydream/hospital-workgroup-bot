@@ -565,7 +565,7 @@ app.post('/api/dispatch-cache/confirm', async (c) => {
     const list = groupNames => groupNames.map(name => `• ${name}`).join('\n');
     let confirmText = `✅ Case 分配表轉發對象設定成功！\n\n`;
     if (pushed.length) confirmText += `${when} 將自動推播分配表至：\n${list(pushed)}\n\n`;
-    if (shared.length) confirmText += `請用「分享分配表到群組」傳送至（不扣推播額度）：\n${list(shared)}\n\n`;
+    if (shared.length) confirmText += `請用「分享分配表到群組」傳送至（不扣推播額度）：\n${list(shared)}\n各群組也可輸入「今日 Case」自行取得，同樣不扣額度。\n\n`;
     if (!pushed.length && !shared.length) confirmText += `這次沒有勾選任何轉發對象，${when} 不會轉發分配表。\n\n`;
     confirmText += `（設定同仁：${updatedBy || '同仁'}）`;
 

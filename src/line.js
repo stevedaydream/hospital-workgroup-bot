@@ -15,6 +15,7 @@ import { prepareLeaveAlias, leaveAliasPostback, leaveRegistrationReply } from '.
 import { todayInTaipei, dayOfWeek, nextDispatchDate, dispatchMorningLabel } from './util/date.js';
 import { featureEnabled, disabledFeatureMessage as disabledMessage } from './features.js';
 import { IMAGES_DIR } from './images.js';
+import { CASE_PULL_COMMAND, casePullReply } from './case-pull.js';
 
 dotenv.config();
 
@@ -213,6 +214,7 @@ function quickMenuText(text, sourceId) {
   const items = [
     medbaseEnabled && on('duty') && item("📋 近期值班", "近期值班"),
     medbaseEnabled && on('my_schedule') && item("🗓 我的班", "我的班"),
+    on('dispatch') && item("📋 今日 Case", "今日 Case"),
     on('calendar') && item("📅 今日行程", "今日行程"),
     on('notes') && item("📝 整理公告", "整理公告"),
     on('travel') && item("休假/出國", "出國"),
@@ -230,6 +232,7 @@ const COMMAND_FEATURES = [
   [/^(出國|出國登記|誰出國|長假|誰請長假|休假|休假登記|誰休假)$/, 'travel'],
   [/^(行事曆|行程|活動|(今日|今天|明日|明天)(行程|活動))$/, 'calendar'],
   [/^(取消轉發|取消發送)$/, 'dispatch'],
+  [CASE_PULL_COMMAND, 'dispatch'],
   [/^(辨識照片|取消照片辨識|清空轉發|取消今日轉發)$/, 'image_ai']
 ];
 
@@ -1191,6 +1194,11 @@ export async function handleWebhookEvent(event) {
           if (!result.silent) await replyMessage(event.replyToken, result);
           return;
         }
+      }
+
+      if (CASE_PULL_COMMAND.test(text)) {
+        await replyMessage(event.replyToken, await casePullReply(text, event.source));
+        return;
       }
 
       const medbaseReply = await medbaseCommand(text, event.source, (f) => featureEnabled(sourceId, f));

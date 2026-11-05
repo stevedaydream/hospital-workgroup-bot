@@ -13,7 +13,8 @@ import { db } from './db.js';
 export const FEATURES = [
   { key: 'menu', label: '選單／主選單', hint: '「選單」「主選單」「說明」等指令', defaultOn: true },
   { key: 'image_ai', label: '照片 AI 辨識', hint: '傳圖後選新增公告、連續圖片公告或辨識 Case 表／行程；未點選不處理；含「取消今日轉發」', defaultOn: true },
-  { key: 'dispatch', label: '接收 Case 分配表轉發', hint: '每日 07:30 推播分配表到此群組；含「取消轉發」', defaultOn: true },
+  { key: 'dispatch', label: '接收 Case 分配表轉發', hint: '分配表比對到此群組的醫師時列入轉發名單；含「取消轉發」', defaultOn: true },
+  { key: 'dispatch_push', label: 'Case 分配表 07:30 自動推播', hint: '每次依群組人數扣推播額度；關閉時改由上傳的人按「分享分配表到群組」傳送，不扣額度', defaultOn: false },
   { key: 'calendar', label: '行事曆', hint: '「行事曆」「今日行程」「明日行程」', defaultOn: true },
   { key: 'notes', label: '注意事項', hint: '「編輯筆記」；@all 暫存；轉傳文字／檔案／連結後輸入「整理公告」確認建立', defaultOn: true },
   { key: 'course_reminder', label: '課程／期限提醒', hint: '確認含提醒後，課程前一天 09:00、上課前 1 小時；公告期限前 7 天 09:00 提醒；需開啟注意事項及行事曆', defaultOn: true },

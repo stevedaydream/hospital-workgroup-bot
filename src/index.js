@@ -7,7 +7,7 @@ import { serveStatic } from '@hono/node-server/serve-static';
 import dotenv from 'dotenv';
 import { execSync } from 'node:child_process';
 import fs from 'node:fs';
-import { imagePath, verifyImageLink } from './images.js';
+import { imagePath, verifyImageLink, signedImageUrl, IMAGE_RETENTION_DAYS } from './images.js';
 import { db } from './db.js';
 import { requireLiffAuth, requireAdminKey } from './auth.js';
 import { verifySignature, handleWebhookEvent, pushMessage, GROUP_WINDOW_MS } from './line.js';
@@ -16,7 +16,7 @@ import { analyzeRoster, isModelLoaded, modelLabel } from './ai.js';
 import { initializeScheduler, runDailyDispatch, runDailyReminders } from './scheduler.js';
 import { medbaseEnabled, verifyNotifySignature, deliverNotice, DEFAULT_MEDBASE_GROUP, getAttendingRoster } from './medbase.js';
 import { getGroupMemberCount, getPushQuota } from './line.js';
-import { FEATURES, isFeatureKey, effectiveFeatures } from './features.js';
+import { FEATURES, isFeatureKey, effectiveFeatures, featureEnabled } from './features.js';
 import { startReviewAi, reviewAiStatus } from './review-ai.js';
 
 dotenv.config();
@@ -325,7 +325,9 @@ app.delete('/api/notes/:id', async (c) => {
 app.get('/api/doctor-mappings', async (c) => {
   const dept = c.req.query('dept');
   try {
-    const allMappings = await db.doctor_group_mapping.getAll();
+    // auto_push: whether the 07:30 job pushes to this group, or it is shared by hand.
+    const allMappings = (await db.doctor_group_mapping.getAll())
+      .map(m => ({ ...m, auto_push: featureEnabled(m.line_group_id, 'dispatch_push') }));
     if (dept) {
       const filtered = allMappings.filter(m => m.match_key.toUpperCase() === dept.toUpperCase());
       return c.json(filtered);
@@ -540,7 +542,7 @@ app.get('/api/dispatch-cache', async (c) => {
 
 // Confirm/unconfirm selected dispatch groups
 app.post('/api/dispatch-cache/confirm', async (c) => {
-  const { messageId, selectedGroups, unselectedGroups, sourceId, updatedBy } = await c.req.json();
+  const { messageId, selectedGroups, unselectedGroups, updatedBy } = await c.req.json();
   if (!messageId) {
     return c.json({ error: 'Missing messageId' }, 400);
   }
@@ -555,26 +557,33 @@ app.post('/api/dispatch-cache/confirm', async (c) => {
     for (const groupId of selected) await db.daily_dispatch_cache.add(groupId, messageId, true, dispatchDate);
     for (const groupId of unselected) await db.daily_dispatch_cache.remove(groupId, dispatchDate);
 
-    if (sourceId) {
-      const allMappings = await db.doctor_group_mapping.getAll();
-      const names = [...new Set(selected.map(id => allMappings.find(m => m.line_group_id === id)?.group_name).filter(Boolean))];
-      const when = `${dispatchMorningLabel(dispatchDate)} ${Number(dispatchDate.slice(5, 7))}/${Number(dispatchDate.slice(8, 10))} 07:30`;
-      let confirmText = `✅ Case 分配表轉發對象設定成功！\n\n`;
-      confirmText += names.length
-        ? `${when} 將自動轉發分配表至：\n` + names.map(name => `• ${name}`).join('\n') + `\n\n`
-        : `這次沒有勾選任何轉發對象，${when} 不會轉發分配表。\n\n`;
-      confirmText += `（設定同仁：${updatedBy || '同仁'}）`;
+    const allMappings = await db.doctor_group_mapping.getAll();
+    const names = ids => [...new Set(ids.map(id => allMappings.find(m => m.line_group_id === id)?.group_name).filter(Boolean))];
+    const pushed = names(selected.filter(id => featureEnabled(id, 'dispatch_push')));
+    const shared = names(selected.filter(id => !featureEnabled(id, 'dispatch_push')));
+    const when = `${dispatchMorningLabel(dispatchDate)} ${Number(dispatchDate.slice(5, 7))}/${Number(dispatchDate.slice(8, 10))} 07:30`;
+    const list = groupNames => groupNames.map(name => `• ${name}`).join('\n');
+    let confirmText = `✅ Case 分配表轉發對象設定成功！\n\n`;
+    if (pushed.length) confirmText += `${when} 將自動推播分配表至：\n${list(pushed)}\n\n`;
+    if (shared.length) confirmText += `請用「分享分配表到群組」傳送至（不扣推播額度）：\n${list(shared)}\n\n`;
+    if (!pushed.length && !shared.length) confirmText += `這次沒有勾選任何轉發對象，${when} 不會轉發分配表。\n\n`;
+    confirmText += `（設定同仁：${updatedBy || '同仁'}）`;
 
-      await pushMessage(sourceId, {
-        type: 'text',
-        text: confirmText
-      }, 'Case 表轉發設定確認');
-    }
-
-    return c.json({ success: true, dispatchDate });
+    // The review page posts this into the chat as the user (liff.sendMessages), which is
+    // free; a push here would cost one per member of the uploading group.
+    return c.json({ success: true, dispatchDate, confirmText });
   } catch (error) {
     return c.json({ error: error.message }, 500);
   }
+});
+
+// A signed link to a case-table photo for liff.shareTargetPicker. The shared
+// message stays in the target chat, so the link lasts as long as the photo is kept.
+app.get('/api/images/:id/share-link', (c) => {
+  const id = c.req.param('id');
+  const file = imagePath(id);
+  if (!file || !fs.existsSync(file)) return c.json({ error: '找不到這張分配表，可能已超過保存期限' }, 404);
+  return c.json({ url: signedImageUrl(id, Date.now(), IMAGE_RETENTION_DAYS * 24 * 60 * 60 * 1000) });
 });
 
 // Fetch all events for a group

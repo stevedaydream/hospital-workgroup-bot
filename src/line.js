@@ -106,6 +106,7 @@ export async function pushMessage(to, messages, reason = '其他') {
   const cost = ok ? await pushCost(to).catch(() => null) : null;
   try { db.push_log.add({ reason, target: to, messages: list.length, cost, ok, error: ok ? null : result }); }
   catch (logError) { console.error('[Push log]', logError.message); }
+  return ok;
 }
 
 /** Returns true when LINE accepted the push, otherwise the error text. */
@@ -462,25 +463,15 @@ function getOcrSummaryFlex(dispatchedGroups, hasUro, messageId, sourceId, dateWa
     });
   }
 
-  if (dispatchedGroups.length > 0) {
-    contents.push({
-      type: "text",
-      text: `【已自動排程${dispatchMorningLabel(nextDispatchDate())} 07:30 轉發】：`,
-      color: "#4f5d68",
-      size: "xs",
-      margin: "md",
-      weight: "bold"
-    });
-    dispatchedGroups.forEach(g => {
-      contents.push({
-        type: "text",
-        text: `• ${g}`,
-        color: "#36434e",
-        size: "xs",
-        margin: "xs"
-      });
-    });
-  } else {
+  const listGroups = (title, groups) => {
+    contents.push({ type: "text", text: title, color: "#4f5d68", size: "xs", margin: "md", weight: "bold", wrap: true });
+    groups.forEach(g => contents.push({ type: "text", text: `• ${g.name}`, color: "#36434e", size: "xs", margin: "xs", wrap: true }));
+  };
+  const pushGroups = dispatchedGroups.filter(g => g.push);
+  const shareGroups = dispatchedGroups.filter(g => !g.push);
+  if (pushGroups.length) listGroups(`【已自動排程${dispatchMorningLabel(nextDispatchDate())} 07:30 推播】：`, pushGroups);
+  if (shareGroups.length) listGroups('【請按「分享分配表到群組」傳送（不扣推播額度）】：', shareGroups);
+  if (!dispatchedGroups.length) {
     contents.push({
       type: "text",
       text: "【無直接比對到之骨科醫師】",
@@ -514,6 +505,16 @@ function getOcrSummaryFlex(dispatchedGroups, hasUro, messageId, sourceId, dateWa
       wrap: true
     });
   }
+
+  // Sharing sends the photo as the person who taps, so it does not use the bot's push quota.
+  contents.push({
+    type: "button",
+    action: { type: "uri", label: "📤 分享分配表到群組", uri: `${selectUrl}&share=1` },
+    style: "primary",
+    color: "#1d4ed8",
+    margin: "md",
+    height: "sm"
+  });
 
   // Always render the Review & Adjust Button
   contents.push({
@@ -813,6 +814,32 @@ function getAutoCalendarAddedFlex(addedEvents, sourceId) {
  * Handles batch image analysis after the debounce window expires.
  * @param {string} sourceId - LINE Group/Room/User ID
  */
+/** Every button link in a set of messages, for the progress page. */
+function resultLinks(messages) {
+  const links = [];
+  const walk = node => {
+    if (Array.isArray(node)) return node.forEach(walk);
+    if (!node || typeof node !== 'object') return;
+    if (node.type === 'uri' && node.uri) links.push({ label: node.label || '開啟', uri: node.uri });
+    Object.values(node).forEach(walk);
+  };
+  walk(messages);
+  return links;
+}
+
+/**
+ * Image results go privately to whoever pressed the button rather than to the
+ * group: a group push is billed once per member, a private one once. The
+ * progress page shows the same text and links, in case the private push fails
+ * because the person has not added the bot as a friend.
+ */
+async function sendResult(session, sourceId, messages, reason) {
+  const list = Array.isArray(messages) ? messages : [messages];
+  session.job.result_texts = list.map(m => m.text || m.altText).filter(Boolean);
+  session.job.links = resultLinks(list);
+  session.job.delivered = await pushMessage(session.userId || sourceId, list, reason);
+}
+
 async function triggerBatchProcess(sourceId, sessionKey) {
   const session = imageGroupSessions.get(sessionKey);
   if (!session) return;
@@ -820,8 +847,8 @@ async function triggerBatchProcess(sourceId, sessionKey) {
   imageGroupSessions.delete(sessionKey);
   imageUploadIntents.delete(sessionKey);
   if (!featureEnabled(sourceId, 'image_ai')) {
+    await sendResult(session, sourceId, disabledMessage('image_ai'), '功能關閉提示');
     updateJob(session.job, { stage: 'done', resultLabel: '功能已關閉' });
-    await pushMessage(sourceId, disabledMessage('image_ai'), '功能關閉提示');
     return;
   }
   if (session.announcementOnly) {
@@ -833,8 +860,8 @@ async function triggerBatchProcess(sourceId, sessionKey) {
         return true;
       });
     if (!unique.length) {
+      await sendResult(session, sourceId, { type: 'text', text: `♻️ 這些圖片已建立過公告，已略過，未重複新增。\n公告目錄：https://liff.line.me/${LIFF_NOTES_ID}?groupId=${sourceId}` }, '圖片重複略過');
       updateJob(session.job, { stage: 'done', resultLabel: '已略過重複圖片' });
-      await pushMessage(sourceId, { type: 'text', text: `♻️ 這些圖片已建立過公告，已略過，未重複新增。\n公告目錄：https://liff.line.me/${LIFF_NOTES_ID}?groupId=${sourceId}` }, '圖片重複略過');
       return;
     }
     session.buffers = unique.map(item => item.buffer);
@@ -846,7 +873,7 @@ async function triggerBatchProcess(sourceId, sessionKey) {
   const messageId = session.messageIds[session.messageIds.length - 1];
 
   // Progress lives on the page linked from the first reply; the outcome goes
-  // out as ONE push, since pushes are billed per group member.
+  // out as ONE private push to the person who pressed the button.
   const { job } = session;
   const resultMessages = [];
   const stage = trackModelStage(job, { isModelLoaded, modelLabel });
@@ -866,8 +893,8 @@ async function triggerBatchProcess(sourceId, sessionKey) {
     stage.stop();
 
     if (!featureEnabled(sourceId, 'image_ai')) {
+      await sendResult(session, sourceId, disabledMessage('image_ai'), '功能關閉提示');
       updateJob(job, { stage: 'done', resultLabel: '功能已關閉' });
-      await pushMessage(sourceId, disabledMessage('image_ai'), '功能關閉提示');
       return;
     }
 
@@ -964,7 +991,7 @@ async function triggerBatchProcess(sourceId, sessionKey) {
             if (!featureEnabled(map.line_group_id, 'dispatch')) continue;
             if (map.type === 'DIRECT') {
               await db.daily_dispatch_cache.add(map.line_group_id, messageId, true);
-              dispatchedGroups.push(`${map.group_name} (${docName}醫師)`);
+              dispatchedGroups.push({ name: `${map.group_name} (${docName}醫師)`, push: featureEnabled(map.line_group_id, 'dispatch_push') });
             }
           }
         }
@@ -1000,16 +1027,16 @@ async function triggerBatchProcess(sourceId, sessionKey) {
     }
 
     const RESULT_LABELS = { WARD_NOTE: '病房公告', CALENDAR: '行事曆', CASE_TABLE: 'Case 分配表' };
+    await sendResult(session, sourceId, resultMessages, '圖片辨識結果');
     updateJob(job, { stage: 'done', resultLabel: RESULT_LABELS[ocrResult.type] || '無法辨識' });
-    await pushMessage(sourceId, resultMessages, '圖片辨識結果');
   } catch (error) {
     stage.stop();
     console.error('Error processing batch images:', error);
-    updateJob(job, { stage: 'failed', error: error.message });
-    await pushMessage(sourceId, {
+    await sendResult(session, sourceId, {
       type: "text",
       text: `❌ 圖片整併分析失敗，錯誤原因：${error.message}`
     }, '圖片辨識失敗');
+    updateJob(job, { stage: 'failed', error: error.message });
   }
 }
 
@@ -1024,7 +1051,7 @@ export async function handleWebhookEvent(event) {
   }
   if (event.type === 'message' && event.message?.type === 'text' && SHARED_COMMANDS.includes(event.message.text.trim())) {
     await handleSharedCommand(event.message.text.trim(), sourceIdForGate, event.source?.userId, {
-      reply: messages => replyMessage(event.replyToken, messages), push: pushMessage
+      reply: messages => replyMessage(event.replyToken, messages), push: (to, m) => pushMessage(to, m, '整理公告預覽')
     });
     return;
   }
@@ -1073,7 +1100,7 @@ export async function handleWebhookEvent(event) {
     }
     const sessionKey = imageSessionKey(sourceId, event.source.userId);
     const job = createJob();
-    await replyMessage(event.replyToken, { type: 'text', text: `已開始處理 ${choice.ids.length} 張圖片。\n點開查看即時進度（聊天預覽不會更新）：\n${BASE_URL}/progress.html?job=${job.id}` });
+    await replyMessage(event.replyToken, { type: 'text', text: `已開始處理 ${choice.ids.length} 張圖片，完成後結果會私訊給按下按鈕的人（需先加「醫院群組助手」為好友）。\n點開查看即時進度與結果：\n${BASE_URL}/progress.html?job=${job.id}` });
     try {
       const buffers = [];
       for (const id of choice.ids) {
@@ -1087,7 +1114,7 @@ export async function handleWebhookEvent(event) {
       await triggerBatchProcess(sourceId, jobKey);
     } catch (error) {
       updateJob(job, { stage: 'failed', error: error.message });
-      await pushMessage(sourceId, { type: 'text', text: '圖片讀取失敗，請重新傳送並選擇新增公告。' }, '圖片讀取失敗');
+      await pushMessage(event.source.userId, { type: 'text', text: '圖片讀取失敗，請重新傳送並選擇新增公告。' }, '圖片讀取失敗');
     }
     return;
   }

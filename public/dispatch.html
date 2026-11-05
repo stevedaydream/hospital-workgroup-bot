@@ -5,6 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>今日轉發名單審查</title>
   <link rel="stylesheet" href="/css/style.css">
+  <style>
+    .share-box { margin: 12px 0; display: grid; gap: 6px; }
+    .share-box.highlight #btn-share { box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.35); }
+    .share-hint { margin: 0; font-size: 12px; color: var(--text-secondary); line-height: 1.6; }
+  </style>
 </head>
 <body>
   <div class="liff-container">
@@ -20,6 +25,12 @@
       <div class="image-preview-label">本日 Case 分配大表 (OCR 辨識來源)</div>
     </div>
 
+    <div class="share-box" id="share-box">
+      <button class="btn-primary" id="btn-share" onclick="shareTable()">📤 分享分配表到群組</button>
+      <p class="share-hint">在 LINE 選擇要傳送的群組，圖片會以你的名義送出，<b>不扣機器人推播額度</b>。你必須是該群組的成員。</p>
+      <p class="share-hint" id="share-targets"></p>
+    </div>
+
     <div class="quick-actions">
       <button class="btn-secondary" onclick="toggleAll(true)">✓ 全選</button>
       <button class="btn-secondary" onclick="toggleAll(false)">✗ 取消全選</button>
@@ -33,7 +44,7 @@
 
     <button class="btn-primary" id="btn-submit" onclick="submitDispatch()">
       <span class="spinner" id="btn-spinner"></span>
-      <span id="btn-text">確認轉發名單 (於<span class="dispatch-when">下一次</span> 07:30 發送)</span>
+      <span id="btn-text">確認轉發名單 (自動推播群組於<span class="dispatch-when">下一次</span> 07:30 發送)</span>
     </button>
   </div>
 
@@ -103,6 +114,37 @@
       }
     }
 
+    // Shares the photo as the person tapping (liff.shareTargetPicker), which does
+    // not use the bot's push quota. Needs "Share target picker" on for this LIFF app.
+    async function shareTable() {
+      if (!liffParams.msgId) return showToast('沒有可分享的分配表', true);
+      if (!window.liff || !liff.isApiAvailable('shareTargetPicker')) {
+        return showToast('請在 LINE 內開啟此頁，或請管理者在 LIFF 設定開啟分享功能', true);
+      }
+      try {
+        const res = await fetch(`/api/images/${encodeURIComponent(liffParams.msgId)}/share-link`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || res.status);
+        const result = await liff.shareTargetPicker(
+          [{ type: 'image', originalContentUrl: data.url, previewImageUrl: data.url }],
+          { isMultiple: true }
+        );
+        if (result) showToast('已分享分配表');
+      } catch (error) {
+        showToast('分享失敗：' + error.message, true);
+      }
+    }
+
+    // Posts into the chat this page was opened from, as the user: free, unlike a bot push.
+    async function postToChat(text) {
+      try {
+        const type = liff.isInClient() && liff.getContext()?.type;
+        if (['group', 'room', 'utou'].includes(type)) await liff.sendMessages([{ type: 'text', text }]);
+      } catch (error) {
+        console.warn('Could not post the confirmation to the chat', error);
+      }
+    }
+
     function toggleAll(checked) {
       const checkboxes = document.querySelectorAll('.doctor-checkbox');
       checkboxes.forEach(cb => cb.checked = checked);
@@ -120,6 +162,9 @@
 
         if (liff.isLoggedIn()) window.__setIdToken(liff.getIDToken());
         if (liffParams.msgId) loadCaseImage();
+        if (new URLSearchParams(location.search).get('share') === '1') {
+          document.getElementById('share-box').classList.add('highlight');
+        }
         
         if (liff.isLoggedIn()) {
           const profile = await liff.getProfile();
@@ -157,6 +202,10 @@
         const activeGroupIds = activeCaches.map(c => c.target_line_group_id);
 
         container.innerHTML = '';
+        const shareNames = mappings.filter(m => !m.auto_push && activeGroupIds.includes(m.line_group_id)).map(m => m.group_name);
+        document.getElementById('share-targets').textContent = shareNames.length
+          ? `這張分配表要分享到：${[...new Set(shareNames)].join('、')}`
+          : '';
         
         // Sort mappings so checked ones (AI identified) appear first
         mappings.sort((a, b) => {
@@ -176,6 +225,7 @@
                 <span class="doctor-name">
                   ${escapeHtml(map.group_name)}
                   <span class="type-badge ${badgeClass}" style="margin-left: 6px;">${map.type === 'DIRECT' ? '骨科' : '泌尿科'}</span>
+                  <span class="type-badge" style="margin-left: 4px;">${map.auto_push ? '07:30 推播' : '手動分享'}</span>
                 </span>
                 <span class="doctor-group">比對金鑰: ${escapeHtml(map.match_key)}</span>
               </div>
@@ -234,6 +284,8 @@
         });
 
         if (response.ok) {
+          const data = await response.json().catch(() => ({}));
+          if (data.confirmText) await postToChat(data.confirmText);
           showToast('分流名單更新成功！');
           
           // Auto close LIFF window after a short delay
@@ -248,7 +300,7 @@
       } catch (error) {
         showToast('設定失敗：' + error.message, true);
       } finally {
-        btnText.innerText = `確認轉發名單 (於${dispatchWhen()} 07:30 發送)`;
+        btnText.innerText = `確認轉發名單 (自動推播群組於${dispatchWhen()} 07:30 發送)`;
         spinner.style.display = 'none';
         document.getElementById('btn-submit').disabled = false;
       }

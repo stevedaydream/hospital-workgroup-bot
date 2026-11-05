@@ -37,9 +37,9 @@ export const imagePath = id => (ID.test(String(id)) ? path.join(IMAGES_DIR, `${i
 
 const sign = (id, exp) => crypto.createHmac('sha256', SECRET).update(`${id}.${exp}`).digest('base64url');
 
-/** A link LINE can fetch for a push; it stops working after two weeks. */
-export function signedImageUrl(id, now = Date.now()) {
-  const exp = now + LINK_TTL_MS;
+/** A link LINE can fetch for a push or share; by default it stops working after two weeks. */
+export function signedImageUrl(id, now = Date.now(), ttlMs = LINK_TTL_MS) {
+  const exp = now + ttlMs;
   return `${BASE_URL}/images/${id}.jpg?exp=${exp}&sig=${sign(id, exp)}`;
 }
 

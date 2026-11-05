@@ -119,6 +119,9 @@
       .step.active .dot { animation: none; border-top-color: var(--accent); }
       .bar-fill { transition: none; }
     }
+    .result { margin-top: 14px; display: grid; gap: 10px; }
+    .result-text { white-space: pre-wrap; font-size: 14px; line-height: 1.6; padding: 12px; border-radius: 12px; background: var(--surface, #f4f6f7); }
+    .result a { display: block; text-align: center; padding: 11px; border-radius: 12px; background: #0f766e; color: #fff; font-weight: 700; text-decoration: none; }
   </style>
 </head>
 <body>
@@ -139,14 +142,37 @@
       <li class="step" data-stage="collecting"><span class="dot"></span>等待其他照片<span class="detail"></span></li>
       <li class="step" data-stage="loading"><span class="dot"></span>載入 AI 模型<span class="detail"></span></li>
       <li class="step" data-stage="recognizing"><span class="dot"></span>AI 辨識中<span class="detail"></span></li>
-      <li class="step" data-stage="done"><span class="dot"></span>結果送回群組<span class="detail"></span></li>
+      <li class="step" data-stage="done"><span class="dot"></span>結果私訊給你<span class="detail"></span></li>
     </ol>
 
     <div class="notice" id="notice" role="status"></div>
+    <div id="result" class="result" hidden></div>
   </main>
 
   <script>
     const ORDER = ['collecting', 'loading', 'recognizing', 'done'];
+
+    // The result is built from text nodes and checked links only; nothing is parsed as HTML.
+    function renderResult(view) {
+      const box = document.getElementById('result');
+      if (!view.finished || (!view.resultTexts.length && !view.links.length)) { box.hidden = true; return; }
+      if (box.dataset.done) return;
+      box.dataset.done = '1';
+      box.hidden = false;
+      for (const text of view.resultTexts) {
+        const p = document.createElement('div');
+        p.className = 'result-text';
+        p.textContent = text;
+        box.append(p);
+      }
+      for (const link of view.links) {
+        if (!/^https:\/\//.test(link.uri)) continue;
+        const a = document.createElement('a');
+        a.href = link.uri;
+        a.textContent = link.label;
+        box.append(a);
+      }
+    }
     const POLL_MS = 2000;
     const jobId = new URLSearchParams(location.search).get('job');
 
@@ -239,11 +265,14 @@
       notice.className = 'notice';
       if (view.stage === 'done') {
         notice.classList.add('show', 'ok');
-        notice.textContent = `✅ 已辨識為「${view.resultLabel}」，結果已送到 LINE 群組，可以關閉此頁。`;
+        notice.textContent = view.delivered === false
+          ? `✅ 已辨識為「${view.resultLabel}」。私訊沒有送達（請先加「醫院群組助手」為好友），結果在下方。`
+          : `✅ 已辨識為「${view.resultLabel}」，結果已私訊給你，下方也可以直接操作。`;
       } else if (view.stage === 'failed') {
         notice.classList.add('show', 'bad');
         notice.textContent = `❌ ${view.error || '辨識失敗'}`;
       }
+      renderResult(view);
 
       $('subtitle').textContent = view.model
         ? `共 ${view.imageCount} 張照片 · 使用 ${view.model}`

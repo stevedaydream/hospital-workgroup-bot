@@ -129,6 +129,11 @@ export function getJobView(id, collectWindowMs) {
     error: job.error,
     elapsedSeconds: Math.round((now - job.startedAt) / 1000),
     remainingSeconds: Math.round(remainingSeconds(job, collectWindowMs)),
-    finished: Boolean(job.finishedAt)
+    finished: Boolean(job.finishedAt),
+    // What was sent privately to the person who pressed the button, shown again here
+    // in case that push failed (they have not added the bot as a friend).
+    resultTexts: job.result_texts || [],
+    links: job.links || [],
+    delivered: job.delivered ?? null
   };
 }

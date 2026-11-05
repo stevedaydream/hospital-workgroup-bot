@@ -33,6 +33,11 @@ export async function runDailyDispatch() {
         console.log(`[Scheduler] Dispatch to ${d.target_line_group_id} skipped: switched off for this group.`);
         continue;
       }
+      // Groups without auto-push get the table shared by hand from the review page (free).
+      if (!featureEnabled(d.target_line_group_id, 'dispatch_push')) {
+        console.log(`[Scheduler] Dispatch to ${d.target_line_group_id} skipped: shared by hand instead of pushed.`);
+        continue;
+      }
       uniqueDispatches[d.target_line_group_id] = d;
     }
 

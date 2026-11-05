@@ -36,3 +36,6 @@ yarn-error.log*
 
 # Uploaded case-table photos (patient data) -- they live in data/images now
 public/images/
+
+# Codex chat attachments (case-table photos with patient data)
+.codex-attachments/

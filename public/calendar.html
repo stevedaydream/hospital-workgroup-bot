@@ -111,6 +111,12 @@
     </div>
 
     <!-- Directory Header & Add Button -->
+    <div id="calendar-group-picker" hidden style="margin-bottom: 16px;">
+      <label for="calendar-group">選擇群組行事曆</label>
+      <select id="calendar-group" style="width: 100%; padding: 12px; margin-top: 8px;" onchange="selectCalendarGroup(this.value)">
+        <option value="">請選擇群組</option>
+      </select>
+    </div>
     <div class="directory-header">
       <span style="font-size: 14px; font-weight: 600; color: var(--text-secondary);">行程活動列表</span>
       <button class="btn-add" onclick="openAddModal()">
@@ -185,7 +191,7 @@
   <script>
     let userName = '未知同仁';
     let userAvatarUrl = '';
-    let groupId = 'C9f983c75e05c479be325b749e4c30004'; // Default fallback
+    let groupId = '';
 
     function showToast(message, isError = false) {
       const toast = document.getElementById('toast-notify');
@@ -210,6 +216,7 @@
       const queryGroupId = urlParams.get('groupId');
       if (queryGroupId) {
         groupId = queryGroupId;
+        return;
       }
       try {
         if (liff && liff.getContext() && liff.getContext().groupId) {
@@ -220,8 +227,35 @@
       }
     }
 
+    async function chooseCalendarGroup() {
+      document.getElementById('calendar-group-picker').hidden = false;
+      document.getElementById('meta-info').innerText = '請選擇要查看的群組';
+      document.getElementById('events-list').innerText = '選擇群組後即可查看行程與休假。也可在 LINE 群組輸入「行事曆」開啟該群組行程。';
+      const response = await fetch('/api/line-groups');
+      if (!response.ok) throw new Error('無法取得群組清單');
+      const groups = await response.json();
+      const select = document.getElementById('calendar-group');
+      select.options.length = 1;
+      for (const group of groups.filter(g => !g.left_at)) {
+        const option = document.createElement('option');
+        option.value = group.line_group_id;
+        option.textContent = group.group_name || group.line_group_id;
+        select.appendChild(option);
+      }
+    }
+
+    async function selectCalendarGroup(value) {
+      groupId = value;
+      if (!groupId) return fetchEventsList();
+      const url = new URL(window.location.href);
+      url.searchParams.set('groupId', groupId);
+      window.history.replaceState(null, '', url);
+      await fetchEventsList();
+    }
+
     // Modal Control
     function openAddModal() {
+      if (!groupId) { showToast('請先選擇群組', true); return; }
       document.getElementById('input-title').value = '';
       document.getElementById('input-date').value = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
       document.getElementById('input-time').value = '08:00';
@@ -282,6 +316,7 @@
     // Fetch Events List
     async function fetchEventsList() {
       try {
+        if (!groupId) { await chooseCalendarGroup(); return; }
         const response = await fetch(`/api/events?groupId=${encodeURIComponent(groupId)}&absences=1`);
         if (response.ok) {
           const events = await response.json();

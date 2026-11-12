@@ -132,6 +132,14 @@
       transition: var(--transition);
     }
     .category-chip:hover { border-color: var(--line-strong); color: var(--ink); }
+    .ai-box { margin: 0 0 14px; padding: 10px 12px; border: 1px dashed var(--line-strong); border-radius: 12px; }
+    .ai-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .btn-ai { min-height: 44px; padding: 8px 14px; border-radius: 10px; border: 1px solid var(--line-strong); background: var(--surface, #fff); color: var(--ink); font: inherit; font-weight: 600; cursor: pointer; }
+    .btn-ai:disabled { opacity: 0.6; cursor: wait; }
+    .ai-model { min-height: 44px; padding: 8px; font: inherit; border-radius: 10px; }
+    .ai-status { margin: 8px 0 0; font-size: 12px; line-height: 1.6; color: var(--ink-3); }
+    .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+    .note-category-badge { display: inline-block; margin-right: 6px; padding: 1px 8px; border-radius: 999px; font-size: 12px; border: 1px solid var(--line-strong); color: var(--ink-3); white-space: nowrap; }
     .category-chip.selected {
       background: var(--accent-tint);
       border-color: color-mix(in srgb, var(--accent) 40%, transparent);
@@ -230,29 +238,41 @@
       <div class="modal-title" id="modal-title-text">
         <span>✏️</span> 編輯公告項目
       </div>
-      
+
+      <div class="form-group">
+        <label class="form-label" for="input-content">公告內容</label>
+        <textarea class="input-field textarea-field" id="input-content" placeholder="請直接輸入或貼上公告內容，可按下方「AI 整理」自動排版並填入標題與分類..."></textarea>
+      </div>
+
+      <div class="ai-box">
+        <div class="ai-row">
+          <button class="btn-ai" id="btn-ai-organize" onclick="organizeDraft()">✨ AI 整理</button>
+          <label class="visually-hidden" for="ai-model">整理模型</label>
+          <select id="ai-model" class="ai-model">
+            <option value="qwen3.6">Qwen3.6</option><option value="local">Strata</option>
+          </select>
+        </div>
+        <p class="ai-status" id="ai-status" role="status">排版內容，並填入標題與分類；整理後請核對藥名、劑量、時間，按「確認儲存」才會存檔。</p>
+      </div>
+
       <div class="form-group" style="margin-bottom: 12px;">
-        <label class="form-label">選擇快捷標題類別</label>
+        <label class="form-label">分類</label>
         <div class="category-selector" id="modal-category-selector">
           <!-- Chips generated dynamically -->
         </div>
-      </div>
-      
-      <div class="form-group">
-        <label class="form-label">公告標題 (可手動修改或點選快捷選單)</label>
         <div class="title-input-wrapper">
-          <input type="text" class="input-field" id="input-title" placeholder="例如：會診、藥物、手術、檢查" oninput="checkCustomTitle()">
-          <button class="btn-add-custom-cat" id="btn-save-cat" style="display: none;" onclick="addNewCategoryFromInput()" title="將此自訂標題加入快捷選單">
+          <input type="text" class="input-field" id="input-category" placeholder="點選上方分類，或輸入新分類" oninput="checkCustomTitle()">
+          <button class="btn-add-custom-cat" id="btn-save-cat" style="display: none;" onclick="addNewCategoryFromInput()" title="將此分類加入快捷選單">
             ＋ 新增至選單
           </button>
         </div>
       </div>
-      
+
       <div class="form-group">
-        <label class="form-label">公告內容</label>
-        <textarea class="input-field textarea-field" id="input-content" placeholder="請直接輸入注意事項內容，同仁可一目了然..."></textarea>
+        <label class="form-label" for="input-title">公告標題</label>
+        <input type="text" class="input-field" id="input-title" placeholder="例如：Heparin 新劑量、MRI 預約流程">
       </div>
-      
+
       <div class="modal-actions">
         <button class="btn-cancel" onclick="closeModal()">取消</button>
         <button class="btn-save-confirm" id="btn-save-confirm" onclick="saveNoteSubmit()">確認儲存</button>
@@ -272,11 +292,11 @@
   <script>
     let userName = '未知同仁';
     let userAvatarUrl = '';
-    let currentEditId = null; 
+    let currentEditId = null;
     let allNotes = []; // Stores all fetched notes locally to perform client-side filtering
     let currentFilter = 'ALL';
     let expandedNoteIds = new Set();
-    
+
     // Category list persistence in localStorage
     const defaultCategories = ['會診', '藥物', '手術', '檢查', '其他'];
     let categories = JSON.parse(localStorage.getItem('note_categories')) || defaultCategories;
@@ -285,14 +305,14 @@
       const toast = document.getElementById('toast-notify');
       const icon = document.getElementById('toast-icon');
       const text = document.getElementById('toast-text');
-      
+
       text.innerText = message;
       if (isError) {
         icon.className = 'toast-icon error';
       } else {
         icon.className = 'toast-icon';
       }
-      
+
       toast.classList.add('show');
       setTimeout(() => {
         toast.classList.remove('show');
@@ -304,18 +324,18 @@
       // 1. Render Main Directory Filter Bar
       const filterBar = document.getElementById('filter-bar');
       filterBar.innerHTML = `<button class="filter-btn ${currentFilter === 'ALL' ? 'active' : ''}" id="filter-all" onclick="filterNotes('ALL')">全部</button>`;
-      
+
       categories.forEach(cat => {
         const activeClass = currentFilter === cat ? 'active' : '';
         filterBar.insertAdjacentHTML('beforeend', `
           <button class="filter-btn ${activeClass}" onclick="filterNotes('${cat}')">${escapeHtml(cat)}</button>
         `);
       });
-      
+
       // 2. Render Modal Categories Quick Select
       const modalSelector = document.getElementById('modal-category-selector');
       modalSelector.innerHTML = '';
-      
+
       categories.forEach(cat => {
         modalSelector.insertAdjacentHTML('beforeend', `
           <button class="category-chip" id="chip-${cat}" onclick="selectCategoryChip('${cat}')">${escapeHtml(cat)}</button>
@@ -327,29 +347,29 @@
       // Unselect all other chips
       const chips = document.querySelectorAll('.category-chip');
       chips.forEach(c => c.classList.remove('selected'));
-      
+
       // Select clicked chip
       const selectedChip = document.getElementById(`chip-${cat}`);
       if (selectedChip) selectedChip.classList.add('selected');
-      
+
       // Set input value
-      document.getElementById('input-title').value = cat;
+      document.getElementById('input-category').value = cat;
       document.getElementById('btn-save-cat').style.display = 'none'; // Predefined, hide button
     }
 
     function checkCustomTitle() {
-      const titleInput = document.getElementById('input-title').value.trim();
+      const titleInput = document.getElementById('input-category').value.trim();
       const saveCatBtn = document.getElementById('btn-save-cat');
-      
+
       // Highlight matching chip if it matches typed text
       const chips = document.querySelectorAll('.category-chip');
       chips.forEach(c => c.classList.remove('selected'));
-      
+
       if (!titleInput) {
         saveCatBtn.style.display = 'none';
         return;
       }
-      
+
       const matchedCat = categories.find(c => c === titleInput);
       if (matchedCat) {
         const matchedChip = document.getElementById(`chip-${matchedCat}`);
@@ -362,12 +382,12 @@
     }
 
     function addNewCategoryFromInput() {
-      const titleInput = document.getElementById('input-title').value.trim();
+      const titleInput = document.getElementById('input-category').value.trim();
       if (titleInput && !categories.includes(titleInput)) {
         categories.push(titleInput);
         localStorage.setItem('note_categories', JSON.stringify(categories));
         renderCategoryUI();
-        
+
         // Select newly added category
         selectCategoryChip(titleInput);
         showToast(`已將「${titleInput}」新增至快捷選單！`);
@@ -379,13 +399,15 @@
       currentEditId = null;
       document.getElementById('modal-title-text').innerHTML = '<span>＋</span> 新增公告項目';
       document.getElementById('input-title').value = '';
+      document.getElementById('input-category').value = '';
       document.getElementById('input-content').value = '';
       document.getElementById('btn-save-cat').style.display = 'none';
-      
+      resetAiStatus();
+
       // Unselect all chips
       const chips = document.querySelectorAll('.category-chip');
       chips.forEach(c => c.classList.remove('selected'));
-      
+
       document.getElementById('note-modal').classList.add('show');
     }
 
@@ -393,25 +415,18 @@
       currentEditId = id;
       document.getElementById('modal-title-text').innerHTML = '<span>✏️</span> 編輯公告項目';
       document.getElementById('btn-save-cat').style.display = 'none';
-      
+
       // Fetch details from API
       try {
         const res = await fetch(`/api/notes/${id}`);
         if (res.ok) {
           const note = await res.json();
           document.getElementById('input-title').value = note.title;
+          document.getElementById('input-category').value = note.category || '其他';
           document.getElementById('input-content').value = note.content;
-          
-          // Select chip if title matches any category
-          const chips = document.querySelectorAll('.category-chip');
-          chips.forEach(c => c.classList.remove('selected'));
-          
-          const matchedCat = categories.find(c => c === note.title);
-          if (matchedCat) {
-            const matchedChip = document.getElementById(`chip-${matchedCat}`);
-            if (matchedChip) matchedChip.classList.add('selected');
-          }
-          
+          resetAiStatus();
+          checkCustomTitle();
+
           document.getElementById('note-modal').classList.add('show');
         } else {
           showToast('無法取得公告詳細內容', true);
@@ -423,25 +438,78 @@
 
     function closeModal() {
       document.getElementById('note-modal').classList.remove('show');
+      aiRun++; // a draft that arrives after closing must not fill the next note
+    }
+
+    const AI_HINT = '排版內容，並填入標題與分類；整理後請核對藥名、劑量、時間，按「確認儲存」才會存檔。';
+    let aiRun = 0;
+    function resetAiStatus() {
+      aiRun++;
+      document.getElementById('ai-status').textContent = AI_HINT;
+      document.getElementById('btn-ai-organize').disabled = false;
+    }
+
+    // Sends the typed text to the local AI and fills title, category and content
+    // with its draft. Nothing is saved until the person presses 確認儲存.
+    async function organizeDraft() {
+      const content = document.getElementById('input-content').value.trim();
+      const status = document.getElementById('ai-status');
+      if (!content) { showToast('請先輸入公告內容', true); return; }
+      const run = ++aiRun;
+      const button = document.getElementById('btn-ai-organize');
+      const model = document.getElementById('ai-model').value;
+      const modelName = model === 'local' ? 'Strata' : 'Qwen3.6';
+      button.disabled = true;
+      status.textContent = '準備模型中，可能需要一兩分鐘…';
+      try {
+        const started = await fetch('/api/notes/organize', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: document.getElementById('input-title').value.trim(), content, categories, model })
+        });
+        const job = await started.json().catch(() => ({}));
+        if (!started.ok) throw new Error(job.error || '無法開始整理');
+        for (;;) {
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          if (run !== aiRun) return;
+          const response = await fetch(`/api/notes/organize/${encodeURIComponent(job.id)}`, { cache: 'no-store' });
+          const result = await response.json().catch(() => ({}));
+          if (run !== aiRun) return;
+          if (result.status === 'running') {
+            status.textContent = result.stage === 'preparing' ? '準備模型中，可能需要一兩分鐘…' : `${modelName} 整理中…`;
+            continue;
+          }
+          if (result.status !== 'done' || !result.draft) throw new Error(result.error || '整理已中斷，請重試');
+          document.getElementById('input-title').value = result.draft.title;
+          document.getElementById('input-category').value = result.draft.category;
+          document.getElementById('input-content').value = result.draft.content;
+          checkCustomTitle();
+          status.textContent = '✅ 已填入 AI 草稿。請核對藥名、劑量、時間與限制，確認無誤再按「確認儲存」。';
+          return;
+        }
+      } catch (error) {
+        if (run === aiRun) status.textContent = `整理失敗：${error.message}。原本的內容沒有變動，可換模型再試。`;
+      } finally {
+        if (run === aiRun) button.disabled = false;
+      }
     }
 
     // Initialize LIFF
     async function initLiff() {
       renderCategoryUI();
-      
+
       try {
         const resConfig = await fetch('/api/config');
         const config = await resConfig.json();
-        
+
         await liff.init({ liffId: config.LIFF_NOTES_ID });
 
         if (liff.isLoggedIn()) window.__setIdToken(liff.getIDToken());
-        
+
         if (liff.isLoggedIn()) {
           const profile = await liff.getProfile();
           userName = profile.displayName;
           userAvatarUrl = profile.pictureUrl;
-          
+
           document.getElementById('user-name').innerText = userName;
           if (userAvatarUrl) {
             document.getElementById('user-avatar').src = userAvatarUrl;
@@ -449,7 +517,7 @@
             document.getElementById('user-avatar').src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%2314b8a6"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/></svg>';
           }
           document.getElementById('user-badge').style.display = 'flex';
-          
+
           // Sync user profile
           await fetch('/api/users/sync', {
             method: 'POST',
@@ -468,7 +536,7 @@
       } catch (err) {
         console.error('LIFF initialization failed', err);
         document.getElementById('meta-info').innerText = '連線失敗，建議於 LINE 內打開。';
-        await fetchNotesList(); 
+        await fetchNotesList();
       }
     }
 
@@ -594,11 +662,11 @@
     // Client-side category filtering
     function filterNotes(category) {
       currentFilter = category;
-      
+
       // Update Filter Bar Buttons
       const filterBtns = document.querySelectorAll('.filter-btn');
       filterBtns.forEach(btn => btn.classList.remove('active'));
-      
+
       // Set active state on correct button
       const filterAll = document.getElementById('filter-all');
       if (category === 'ALL') {
@@ -608,27 +676,21 @@
         const targetBtn = Array.from(filterBtns).find(btn => btn.innerText === category);
         if (targetBtn) targetBtn.classList.add('active');
       }
-      
+
       renderNotesList();
     }
 
     // Render list based on local cache and current filter
     function renderNotesList() {
       const container = document.getElementById('notes-list');
-      
+
       // Apply Filter
       let filtered = allNotes;
       if (currentFilter !== 'ALL') {
-        if (currentFilter === '其他') {
-          // '其他' shows notes whose title is either exactly '其他' OR doesn't match any of the other default predefined categories
-          filtered = allNotes.filter(n => {
-            const hasMatch = defaultCategories.slice(0, 4).some(cat => n.title.includes(cat)); // matches 會診, 藥物, 手術, 檢查
-            return !hasMatch;
-          });
-        } else {
-          // Regular filter: matches title content (contains or equals)
-          filtered = allNotes.filter(n => n.title.includes(currentFilter));
-        }
+        // 其他 also collects notes whose category has no chip on this device.
+        filtered = currentFilter === '其他'
+          ? allNotes.filter(n => !n.category || n.category === '其他' || !categories.includes(n.category))
+          : allNotes.filter(n => n.category === currentFilter);
       }
 
       if (filtered.length === 0) {
@@ -642,13 +704,13 @@
         const dateStr = new Date(note.updated_at).toLocaleString('zh-TW', { hour12: false });
         const isExpanded = expandedNoteIds.has(String(note.id));
         const cardClass = isExpanded ? 'note-card expanded' : 'note-card';
-        
+
         const cardHtml = `
           <div class="${cardClass}" id="note-card-${note.id}" onclick="toggleNote('${note.id}')">
             <div class="note-card-header">
               <div class="note-card-title-group">
                 <span class="collapse-icon">▶</span>
-                <span class="note-card-title">${escapeHtml(note.title)}</span>
+                <span class="note-card-title"><span class="note-category-badge">${escapeHtml(note.category || '其他')}</span>${escapeHtml(note.title)}</span>
               </div>
             </div>
             <div class="note-card-body-wrapper">
@@ -668,7 +730,7 @@
         `;
         container.insertAdjacentHTML('beforeend', cardHtml);
       });
-      
+
       document.getElementById('meta-info').innerText = `已顯示 ${filtered.length} 筆公告項目`;
     }
 
@@ -688,17 +750,18 @@
     // Create or Edit Submit
     async function saveNoteSubmit() {
       const title = document.getElementById('input-title').value.trim();
+      const category = document.getElementById('input-category').value.trim() || '其他';
       const content = document.getElementById('input-content').value.trim();
-      
+
       if (!title || !content) {
         showToast('請填寫標題與內容', true);
         return;
       }
 
-      // If the user entered a custom title but did not click "+新增至選單", auto-save it to selection chips for convenience
-      if (title && !categories.includes(title)) {
-        categories.push(title);
-        localStorage.setItem('note_categories', JSON.stringify(categories));
+      // A new category typed in without pressing "+新增至選單" is added to the chips for convenience
+      if (!categories.includes(category)) {
+        categories.push(category);
+        try { localStorage.setItem('note_categories', JSON.stringify(categories)); } catch {}
         renderCategoryUI();
       }
 
@@ -713,14 +776,14 @@
           response = await fetch('/api/notes', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ title, content, updatedBy: userName })
+            body: JSON.stringify({ title, category, content, updatedBy: userName })
           });
         } else {
           // UPDATE (PUT)
           response = await fetch(`/api/notes/${currentEditId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ title, content, updatedBy: userName })
+            body: JSON.stringify({ title, category, content, updatedBy: userName })
           });
         }
 

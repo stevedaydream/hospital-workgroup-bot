@@ -8,7 +8,7 @@ import dotenv from 'dotenv';
 import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import { imagePath, verifyImageLink, signedImageUrl, IMAGE_RETENTION_DAYS } from './images.js';
-import { db } from './db.js';
+import { db, NOTE_CATEGORIES } from './db.js';
 import { requireLiffAuth, requireAdminKey } from './auth.js';
 import { verifySignature, handleWebhookEvent, pushMessage, GROUP_WINDOW_MS } from './line.js';
 import { getJobView, getJob, createJob, updateJob, trackModelStage } from './progress.js';
@@ -17,7 +17,7 @@ import { initializeScheduler, runDailyDispatch, runDailyReminders } from './sche
 import { medbaseEnabled, verifyNotifySignature, deliverNotice, DEFAULT_MEDBASE_GROUP, getAttendingRoster } from './medbase.js';
 import { getGroupMemberCount, getPushQuota } from './line.js';
 import { FEATURES, isFeatureKey, effectiveFeatures, featureEnabled } from './features.js';
-import { startReviewAi, reviewAiStatus } from './review-ai.js';
+import { startReviewAi, reviewAiStatus, startDraftAi, draftAiStatus } from './review-ai.js';
 
 dotenv.config();
 
@@ -250,6 +250,17 @@ app.post('/api/note-reviews/:id/resolve', async c => {
   return result ? c.json(result) : c.json({ error: '找不到待確認公告' }, 404);
 });
 
+// AI draft for the notes editor: title, category and tidied content to review before saving.
+app.post('/api/notes/organize', async c => {
+  const { title = '', content = '', categories = [], model = 'qwen3.6' } = await c.req.json().catch(() => ({}));
+  if (typeof content !== 'string' || !content.trim()) return c.json({ error: '請先輸入公告內容' }, 400);
+  if (content.length > 8000) return c.json({ error: '內容超過 8000 字，請分成多則公告' }, 400);
+  const list = (Array.isArray(categories) ? categories : []).filter(x => typeof x === 'string' && x.trim()).map(x => x.trim().slice(0, 20)).slice(0, 30);
+  try { return c.json(startDraftAi({ title: String(title).slice(0, 200), content }, list.length ? list : NOTE_CATEGORIES, undefined, { model }), 202); }
+  catch (error) { return c.json({ error: error.message }, 409); }
+});
+app.get('/api/notes/organize/:id', c => c.json(draftAiStatus(c.req.param('id'))));
+
 app.get('/api/notes', async (c) => {
   try {
     const notes = await db.general_notes.getAll();
@@ -283,12 +294,12 @@ app.get('/api/notes/:id', async (c) => {
 
 // Create a new ward note/notice
 app.post('/api/notes', async (c) => {
-  const { title, content, updatedBy } = await c.req.json();
+  const { title, content, updatedBy, category } = await c.req.json();
   if (!title || !content) {
     return c.json({ error: 'Missing title or content' }, 400);
   }
   try {
-    const note = await db.general_notes.create(title, content, updatedBy || '未知人員');
+    const note = await db.general_notes.create(title, content, updatedBy || '未知人員', typeof category === 'string' ? category.trim().slice(0, 20) : undefined);
     return c.json(note);
   } catch (error) {
     return c.json({ error: error.message }, 500);
@@ -298,12 +309,12 @@ app.post('/api/notes', async (c) => {
 // Update an existing ward note/notice
 app.put('/api/notes/:id', async (c) => {
   const id = c.req.param('id');
-  const { title, content, updatedBy } = await c.req.json();
+  const { title, content, updatedBy, category } = await c.req.json();
   if (!title || !content) {
     return c.json({ error: 'Missing title or content' }, 400);
   }
   try {
-    const note = await db.general_notes.update(id, title, content, updatedBy || '未知人員');
+    const note = await db.general_notes.update(id, title, content, updatedBy || '未知人員', typeof category === 'string' ? category.trim().slice(0, 20) : undefined);
     return c.json(note);
   } catch (error) {
     return c.json({ error: error.message }, 500);

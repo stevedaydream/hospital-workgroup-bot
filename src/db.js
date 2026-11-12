@@ -221,6 +221,16 @@ for (const column of ['draft_title', 'draft_content']) {
   }
 }
 
+// Notes used to have no category: the editor's category chips filled in the title.
+// Titles that are one of the default chips keep that as their category; the rest
+// become 其他, and every title is left as it was.
+export const NOTE_CATEGORIES = ['會診', '藥物', '手術', '檢查', '其他'];
+if (!sqlite.prepare('PRAGMA table_info(general_notes)').all().some(c => c.name === 'category')) {
+  sqlite.exec("ALTER TABLE general_notes ADD COLUMN category TEXT NOT NULL DEFAULT '其他'");
+  const marks = NOTE_CATEGORIES.map(() => '?').join(', ');
+  sqlite.prepare(`UPDATE general_notes SET category = title WHERE title IN (${marks})`).run(...NOTE_CATEGORIES);
+}
+
 // Every proactive push: why it was sent, to whom, and roughly what it cost.
 sqlite.exec(`
   CREATE TABLE IF NOT EXISTS push_log (
@@ -419,17 +429,21 @@ export const db = {
       return sqlite.prepare('SELECT * FROM general_notes WHERE id = ?').get(id) || null;
     },
 
-    async create(title, content, updatedBy) {
+    async create(title, content, updatedBy, category = '其他') {
       const info = sqlite
-        .prepare('INSERT INTO general_notes (title, content, updated_at, updated_by) VALUES (?, ?, ?, ?)')
-        .run(title, content, nowIso(), updatedBy);
+        .prepare('INSERT INTO general_notes (title, content, updated_at, updated_by, category) VALUES (?, ?, ?, ?, ?)')
+        .run(title, content, nowIso(), updatedBy, category || '其他');
       return this.getById(info.lastInsertRowid);
     },
 
-    async update(id, title, content, updatedBy) {
-      const info = sqlite
-        .prepare('UPDATE general_notes SET title = ?, content = ?, updated_at = ?, updated_by = ? WHERE id = ?')
-        .run(title, content, nowIso(), updatedBy, id);
+    async update(id, title, content, updatedBy, category) {
+      const info = category
+        ? sqlite
+          .prepare('UPDATE general_notes SET title = ?, content = ?, updated_at = ?, updated_by = ?, category = ? WHERE id = ?')
+          .run(title, content, nowIso(), updatedBy, category, id)
+        : sqlite
+          .prepare('UPDATE general_notes SET title = ?, content = ?, updated_at = ?, updated_by = ? WHERE id = ?')
+          .run(title, content, nowIso(), updatedBy, id);
       if (info.changes === 0) throw new Error('Note not found');
       return this.getById(id);
     },

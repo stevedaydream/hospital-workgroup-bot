@@ -1,5 +1,6 @@
 import { db } from './db.js';
-import { organizeNotice } from './local-ai.js';
+import { randomUUID } from 'node:crypto';
+import { organizeNotice, organizeNoteDraft } from './local-ai.js';
 import { REVIEW_MODELS, prepareReviewModel } from './model-switch.js';
 
 const jobs = new Map();
@@ -35,4 +36,30 @@ export function startReviewAi(id, organize = organizeNotice, { model = 'qwen3.6'
   const timer = setTimeout(() => { if (jobs.get(id) === job) jobs.delete(id); }, 60 * 60 * 1000);
   timer.unref();
   return reviewAiStatus(id);
+}
+
+// Drafts for the notes editor. The text is only kept here until the page reads it
+// (or an hour passes); nothing is saved as a note until the person presses save.
+const drafts = new Map();
+export function draftAiStatus(id) {
+  const job = drafts.get(String(id));
+  if (!job) return { status: 'missing' };
+  return { status: job.status, error: job.error, model: job.model, stage: job.stage, draft: job.draft };
+}
+export function startDraftAi(note, categories, organize = organizeNoteDraft, { model = 'qwen3.6', prepare = prepareReviewModel } = {}) {
+  if (!Object.hasOwn(REVIEW_MODELS, model)) throw new Error('不支援的模型');
+  if ([...jobs.values(), ...drafts.values()].some(job => job.status === 'running')) throw new Error('另一則公告正在整理，請待完成後再試。');
+  const id = randomUUID();
+  const controller = new AbortController();
+  const job = { status: 'running', error: null, model, stage: 'preparing', draft: null };
+  drafts.set(id, job);
+  job.work = Promise.resolve().then(async () => {
+    await prepare(model, { signal: controller.signal });
+    job.stage = 'organizing';
+    job.draft = await organize(note, categories, { model, signal: controller.signal });
+    job.status = 'done';
+  }).catch(error => { job.status = 'failed'; job.error = error.message; });
+  const timer = setTimeout(() => { controller.abort(); drafts.delete(id); }, 60 * 60 * 1000);
+  timer.unref();
+  return { id, ...draftAiStatus(id) };
 }

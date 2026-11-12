@@ -88,11 +88,14 @@ cd H:\project\hospital-workgroup-bot
 npm start
 ```
 
-登入時自動啟動（工作排程器，不需系統管理員權限）：
+登入時自動啟動，停掉後 10 秒自動重啟（不需系統管理員權限）：在「啟動」資料夾放捷徑 `HospitalBot.lnk`，執行 `wscript.exe "H:\project\hospital-workgroup-bot\scripts\start-bot-hidden.vbs"`。它會在背景（沒有視窗，不會被誤關）執行 `scripts\run-bot-forever.bat`：
 
-```powershell
-schtasks /Create /SC ONLOGON /TN "HospitalBot" /TR "H:\project\hospital-workgroup-bot\scripts\start-bot.bat"
-```
+- bot 結束就在 10 秒後重新啟動，每次啟動與結束都記在 `data\bot.log` 的 `[Watchdog]` 行。
+- Port 3000 已有程式在跑（Port Monitor 或手動 `npm start`）時只等待，不會開第二份。
+- 要徹底停止：建立 `data\bot.stop`，再結束 node；要恢復就刪掉該檔並重新登入，或雙擊捷徑。
+- 重啟 bot（例如更新程式後）：直接結束 node（`Get-NetTCPConnection -LocalPort 3000` 找 PID），watchdog 會用新程式碼重啟。
+
+工作排程器的「登入時」觸發需要系統管理員權限，所以改用「啟動」資料夾。
 
 `npm start` 不會因程式碼變更而重新載入；改完程式（含 `git pull`）都要重啟 bot。`GET /health` 回傳 `startedAt` 與 `commit`，可確認跑的是不是最新版。
 

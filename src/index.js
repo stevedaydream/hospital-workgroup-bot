@@ -18,6 +18,7 @@ import { medbaseEnabled, verifyNotifySignature, deliverNotice, DEFAULT_MEDBASE_G
 import { getGroupMemberCount, getPushQuota } from './line.js';
 import { FEATURES, isFeatureKey, effectiveFeatures, featureEnabled } from './features.js';
 import { startReviewAi, reviewAiStatus, startDraftAi, draftAiStatus } from './review-ai.js';
+import { withExpiry, parseExpiry } from './note-expiry.js';
 
 dotenv.config();
 
@@ -264,7 +265,7 @@ app.get('/api/notes/organize/:id', c => c.json(draftAiStatus(c.req.param('id')))
 app.get('/api/notes', async (c) => {
   try {
     const notes = await db.general_notes.getAll();
-    return c.json(notes);
+    return c.json(notes.map(note => withExpiry(note)));
   } catch (error) {
     return c.json({ error: error.message }, 500);
   }
@@ -273,7 +274,7 @@ app.get('/api/notes', async (c) => {
 // Fetch latest ward note (compatibility fallback)
 app.get('/api/notes/latest', async (c) => {
   try {
-    const notes = await db.general_notes.getAll();
+    const notes = (await db.general_notes.getAll()).map(note => withExpiry(note)).filter(n => !n.expired);
     return c.json(notes.length > 0 ? notes[0] : null);
   } catch (error) {
     return c.json({ error: error.message }, 500);
@@ -286,7 +287,7 @@ app.get('/api/notes/:id', async (c) => {
   try {
     const note = await db.general_notes.getById(id);
     if (!note) return c.json({ error: 'Note not found' }, 404);
-    return c.json(note);
+    return c.json(withExpiry(note));
   } catch (error) {
     return c.json({ error: error.message }, 500);
   }
@@ -294,13 +295,15 @@ app.get('/api/notes/:id', async (c) => {
 
 // Create a new ward note/notice
 app.post('/api/notes', async (c) => {
-  const { title, content, updatedBy, category } = await c.req.json();
+  const { title, content, updatedBy, category, expiresOn } = await c.req.json();
   if (!title || !content) {
     return c.json({ error: 'Missing title or content' }, 400);
   }
+  const expiry = parseExpiry(expiresOn);
+  if (expiry.error) return c.json({ error: expiry.error }, 400);
   try {
-    const note = await db.general_notes.create(title, content, updatedBy || '未知人員', typeof category === 'string' ? category.trim().slice(0, 20) : undefined);
-    return c.json(note);
+    const note = await db.general_notes.create(title, content, updatedBy || '未知人員', typeof category === 'string' ? category.trim().slice(0, 20) : undefined, expiry.value ?? null);
+    return c.json(withExpiry(note));
   } catch (error) {
     return c.json({ error: error.message }, 500);
   }
@@ -309,13 +312,15 @@ app.post('/api/notes', async (c) => {
 // Update an existing ward note/notice
 app.put('/api/notes/:id', async (c) => {
   const id = c.req.param('id');
-  const { title, content, updatedBy, category } = await c.req.json();
+  const { title, content, updatedBy, category, expiresOn } = await c.req.json();
   if (!title || !content) {
     return c.json({ error: 'Missing title or content' }, 400);
   }
+  const expiry = parseExpiry(expiresOn);
+  if (expiry.error) return c.json({ error: expiry.error }, 400);
   try {
-    const note = await db.general_notes.update(id, title, content, updatedBy || '未知人員', typeof category === 'string' ? category.trim().slice(0, 20) : undefined);
-    return c.json(note);
+    const note = await db.general_notes.update(id, title, content, updatedBy || '未知人員', typeof category === 'string' ? category.trim().slice(0, 20) : undefined, expiry.value);
+    return c.json(withExpiry(note));
   } catch (error) {
     return c.json({ error: error.message }, 500);
   }

@@ -132,6 +132,10 @@
       transition: var(--transition);
     }
     .category-chip:hover { border-color: var(--line-strong); color: var(--ink); }
+    .note-expiry-badge { display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 999px; font-size: 12px; white-space: nowrap; border: 1px solid var(--line-strong); color: var(--ink-3); }
+    .note-expiry-badge.soon { border-color: #d97706; color: #b45309; }
+    .note-expiry-badge.expired { border-color: var(--color-rose, #e11d48); color: var(--color-rose, #e11d48); }
+    #expired-list .note-card { opacity: 0.75; }
     .ai-box { margin: 0 0 14px; padding: 10px 12px; border: 1px dashed var(--line-strong); border-radius: 12px; }
     .ai-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
     .btn-ai { min-height: 44px; padding: 8px 14px; border-radius: 10px; border: 1px solid var(--line-strong); background: var(--surface, #fff); color: var(--ink); font: inherit; font-weight: 600; cursor: pointer; }
@@ -226,6 +230,12 @@
       </div>
     </div>
 
+    <details id="expired-notes" class="review-panel" hidden>
+      <summary id="expired-summary">已過期公告</summary>
+      <p>到期的公告不會刪除，也不會出現在上方目錄。按 ✏️ 改期限或設為永久即可恢復，或按 🗑️ 刪除。</p>
+      <div class="notes-list" id="expired-list"></div>
+    </details>
+
     <!-- Close LIFF Window Button -->
     <button class="btn-secondary" style="width: 100%; padding: 12px;" onclick="closeLiff()">
       ✕ 關閉視窗
@@ -271,6 +281,19 @@
       <div class="form-group">
         <label class="form-label" for="input-title">公告標題</label>
         <input type="text" class="input-field" id="input-title" placeholder="例如：Heparin 新劑量、MRI 預約流程">
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">有效期限</label>
+        <div class="category-selector" id="expiry-selector">
+          <button type="button" class="category-chip expiry-chip" data-days="" onclick="chooseExpiry('')">永久</button>
+          <button type="button" class="category-chip expiry-chip" data-days="7" onclick="chooseExpiry(7)">7 天</button>
+          <button type="button" class="category-chip expiry-chip" data-days="30" onclick="chooseExpiry(30)">30 天</button>
+          <button type="button" class="category-chip expiry-chip" data-days="90" onclick="chooseExpiry(90)">90 天</button>
+        </div>
+        <label class="visually-hidden" for="input-expiry">到期日</label>
+        <input type="date" class="input-field" id="input-expiry" oninput="markExpiryChip()">
+        <p class="ai-status" id="expiry-hint"></p>
       </div>
 
       <div class="modal-actions">
@@ -345,7 +368,7 @@
 
     function selectCategoryChip(cat) {
       // Unselect all other chips
-      const chips = document.querySelectorAll('.category-chip');
+      const chips = document.querySelectorAll('#modal-category-selector .category-chip');
       chips.forEach(c => c.classList.remove('selected'));
 
       // Select clicked chip
@@ -362,7 +385,7 @@
       const saveCatBtn = document.getElementById('btn-save-cat');
 
       // Highlight matching chip if it matches typed text
-      const chips = document.querySelectorAll('.category-chip');
+      const chips = document.querySelectorAll('#modal-category-selector .category-chip');
       chips.forEach(c => c.classList.remove('selected'));
 
       if (!titleInput) {
@@ -394,6 +417,35 @@
       }
     }
 
+    // Expiry: a note is shown through its expiry date (Taiwan time); empty means permanent.
+    function taipeiToday(offsetDays = 0) {
+      const now = new Date(Date.now() + offsetDays * 86400000);
+      return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei' }).format(now);
+    }
+    function daysLeft(date) {
+      return Math.round((Date.parse(`${date}T00:00:00Z`) - Date.parse(`${taipeiToday()}T00:00:00Z`)) / 86400000);
+    }
+    function shortDate(date) {
+      const [y, m, d] = date.split('-').map(Number);
+      return `${y}/${m}/${d}`;
+    }
+    function chooseExpiry(days) {
+      document.getElementById('input-expiry').value = days === '' ? '' : taipeiToday(days);
+      markExpiryChip();
+    }
+    function markExpiryChip() {
+      const value = document.getElementById('input-expiry').value;
+      const left = value ? daysLeft(value) : null;
+      document.querySelectorAll('.expiry-chip').forEach(chip => {
+        chip.classList.toggle('selected', chip.dataset.days === '' ? !value : left === Number(chip.dataset.days));
+      });
+      document.getElementById('expiry-hint').textContent = !value
+        ? '永久顯示，直到有人刪除。'
+        : left < 0
+          ? `已於 ${shortDate(value)} 到期；儲存後仍放在「已過期公告」。`
+          : `顯示到 ${shortDate(value)}（含當天），之後移到「已過期公告」，不會刪除。`;
+    }
+
     // Modal Control
     function openAddModal() {
       currentEditId = null;
@@ -402,10 +454,12 @@
       document.getElementById('input-category').value = '';
       document.getElementById('input-content').value = '';
       document.getElementById('btn-save-cat').style.display = 'none';
+      document.getElementById('input-expiry').value = '';
+      markExpiryChip();
       resetAiStatus();
 
       // Unselect all chips
-      const chips = document.querySelectorAll('.category-chip');
+      const chips = document.querySelectorAll('#modal-category-selector .category-chip');
       chips.forEach(c => c.classList.remove('selected'));
 
       document.getElementById('note-modal').classList.add('show');
@@ -424,6 +478,8 @@
           document.getElementById('input-title').value = note.title;
           document.getElementById('input-category').value = note.category || '其他';
           document.getElementById('input-content').value = note.content;
+          document.getElementById('input-expiry').value = note.expires_on || '';
+          markExpiryChip();
           resetAiStatus();
           checkCustomTitle();
 
@@ -684,13 +740,17 @@
     function renderNotesList() {
       const container = document.getElementById('notes-list');
 
+      // Expired notes leave the directory but stay in their own section to renew or delete.
+      const active = allNotes.filter(n => !n.expired);
+      renderExpiredNotes(allNotes.filter(n => n.expired));
+
       // Apply Filter
-      let filtered = allNotes;
+      let filtered = active;
       if (currentFilter !== 'ALL') {
         // 其他 also collects notes whose category has no chip on this device.
         filtered = currentFilter === '其他'
-          ? allNotes.filter(n => !n.category || n.category === '其他' || !categories.includes(n.category))
-          : allNotes.filter(n => n.category === currentFilter);
+          ? active.filter(n => !n.category || n.category === '其他' || !categories.includes(n.category))
+          : active.filter(n => n.category === currentFilter);
       }
 
       if (filtered.length === 0) {
@@ -700,7 +760,26 @@
       }
 
       container.innerHTML = '';
-      filtered.forEach(note => {
+      filtered.forEach(note => container.insertAdjacentHTML('beforeend', noteCardHtml(note)));
+      document.getElementById('meta-info').innerText = `已顯示 ${filtered.length} 筆公告項目`;
+    }
+
+    function renderExpiredNotes(expired) {
+      const panel = document.getElementById('expired-notes');
+      panel.hidden = !expired.length;
+      document.getElementById('expired-summary').textContent = `已過期公告（${expired.length}）`;
+      document.getElementById('expired-list').innerHTML = expired.map(noteCardHtml).join('');
+    }
+
+    function expiryBadge(note) {
+      if (!note.expires_on) return '';
+      if (note.expired) return `<span class="note-expiry-badge expired">已於 ${shortDate(note.expires_on)} 到期</span>`;
+      const left = daysLeft(note.expires_on);
+      return `<span class="note-expiry-badge${left <= 3 ? ' soon' : ''}">${left === 0 ? '今天到期' : `剩 ${left} 天`}</span>`;
+    }
+
+    function noteCardHtml(note) {
+      {
         const dateStr = new Date(note.updated_at).toLocaleString('zh-TW', { hour12: false });
         const isExpanded = expandedNoteIds.has(String(note.id));
         const cardClass = isExpanded ? 'note-card expanded' : 'note-card';
@@ -710,7 +789,7 @@
             <div class="note-card-header">
               <div class="note-card-title-group">
                 <span class="collapse-icon">▶</span>
-                <span class="note-card-title"><span class="note-category-badge">${escapeHtml(note.category || '其他')}</span>${escapeHtml(note.title)}</span>
+                <span class="note-card-title"><span class="note-category-badge">${escapeHtml(note.category || '其他')}</span>${escapeHtml(note.title)}${expiryBadge(note)}</span>
               </div>
             </div>
             <div class="note-card-body-wrapper">
@@ -719,6 +798,7 @@
                 <div class="note-card-meta">
                   <span>👤 更新者：${escapeHtml(note.updated_by)}</span>
                   <span>🕒 更新時間：${dateStr}</span>
+                  <span>⏳ 有效期限：${note.expires_on ? `${shortDate(note.expires_on)}（含當天）` : '永久'}</span>
                 </div>
               </div>
             </div>
@@ -728,10 +808,8 @@
             </div>
           </div>
         `;
-        container.insertAdjacentHTML('beforeend', cardHtml);
-      });
-
-      document.getElementById('meta-info').innerText = `已顯示 ${filtered.length} 筆公告項目`;
+        return cardHtml;
+      }
     }
 
     function toggleNote(id) {
@@ -752,6 +830,7 @@
       const title = document.getElementById('input-title').value.trim();
       const category = document.getElementById('input-category').value.trim() || '其他';
       const content = document.getElementById('input-content').value.trim();
+      const expiresOn = document.getElementById('input-expiry').value || null;
 
       if (!title || !content) {
         showToast('請填寫標題與內容', true);
@@ -776,14 +855,14 @@
           response = await fetch('/api/notes', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ title, category, content, updatedBy: userName })
+            body: JSON.stringify({ title, category, content, expiresOn, updatedBy: userName })
           });
         } else {
           // UPDATE (PUT)
           response = await fetch(`/api/notes/${currentEditId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ title, category, content, updatedBy: userName })
+            body: JSON.stringify({ title, category, content, expiresOn, updatedBy: userName })
           });
         }
 

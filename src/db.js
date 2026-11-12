@@ -231,6 +231,12 @@ if (!sqlite.prepare('PRAGMA table_info(general_notes)').all().some(c => c.name =
   sqlite.prepare(`UPDATE general_notes SET category = title WHERE title IN (${marks})`).run(...NOTE_CATEGORIES);
 }
 
+// Last Taiwan date a note is shown (YYYY-MM-DD); NULL means permanent. Expired
+// notes are kept, not deleted, so they can be renewed from the directory.
+if (!sqlite.prepare('PRAGMA table_info(general_notes)').all().some(c => c.name === 'expires_on')) {
+  sqlite.exec('ALTER TABLE general_notes ADD COLUMN expires_on TEXT');
+}
+
 // Every proactive push: why it was sent, to whom, and roughly what it cost.
 sqlite.exec(`
   CREATE TABLE IF NOT EXISTS push_log (
@@ -429,14 +435,18 @@ export const db = {
       return sqlite.prepare('SELECT * FROM general_notes WHERE id = ?').get(id) || null;
     },
 
-    async create(title, content, updatedBy, category = '其他') {
+    async create(title, content, updatedBy, category = '其他', expiresOn = null) {
       const info = sqlite
-        .prepare('INSERT INTO general_notes (title, content, updated_at, updated_by, category) VALUES (?, ?, ?, ?, ?)')
-        .run(title, content, nowIso(), updatedBy, category || '其他');
+        .prepare('INSERT INTO general_notes (title, content, updated_at, updated_by, category, expires_on) VALUES (?, ?, ?, ?, ?, ?)')
+        .run(title, content, nowIso(), updatedBy, category || '其他', expiresOn || null);
       return this.getById(info.lastInsertRowid);
     },
 
-    async update(id, title, content, updatedBy, category) {
+    /** `expiresOn`: a YYYY-MM-DD date, null for permanent, undefined to leave it as it is. */
+    async update(id, title, content, updatedBy, category, expiresOn) {
+      if (expiresOn !== undefined) {
+        sqlite.prepare('UPDATE general_notes SET expires_on = ? WHERE id = ?').run(expiresOn || null, id);
+      }
       const info = category
         ? sqlite
           .prepare('UPDATE general_notes SET title = ?, content = ?, updated_at = ?, updated_by = ?, category = ? WHERE id = ?')

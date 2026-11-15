@@ -19,7 +19,7 @@ test('saving A switches from another chat immediately gates A but leaves B enabl
     return new Response('{}');
   };
   await handleWebhookEvent({ type: 'message', replyToken: 'test', source: { type: 'group', groupId: a, userId: 'Utest' }, message: {type: 'image', id: 'disabled'} });
-  assert.equal(calls[0].messages[0].text, '照片 AI 辨識功能目前開發測試中...');
+  assert.equal(calls.length, 0, 'a switched-off feature stays quiet');
   await db.daily_dispatch_cache.add(a, 'photo', true, todayInTaipei());
   const before = calls.length;
   const result = await runDailyDispatch();

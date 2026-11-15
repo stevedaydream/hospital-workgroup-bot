@@ -57,7 +57,12 @@ export function verifySignature(rawBody, signature) {
 // ----------------------------------------------------
 // LINE API Helpers
 // ----------------------------------------------------
+// Silent placeholders (e.g. a switched-off feature) are never sent to LINE.
+const sendable = messages => (Array.isArray(messages) ? messages : [messages]).filter(m => m && !m.silent);
+
 export async function replyMessage(replyToken, messages) {
+  messages = sendable(messages);
+  if (!messages.length) return;
   const startedAt = Date.now();
   try {
     const response = await fetch('https://api.line.me/v2/bot/message/reply', {
@@ -101,7 +106,8 @@ async function pushCost(to) {
  * message objects one request carries, so a group costs its member count.
  */
 export async function pushMessage(to, messages, reason = '其他') {
-  const list = Array.isArray(messages) ? messages : [messages];
+  const list = sendable(messages);
+  if (!list.length) return false;
   const result = await sendPush(to, list);
   const ok = result === true;
   const cost = ok ? await pushCost(to).catch(() => null) : null;

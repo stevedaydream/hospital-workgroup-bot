@@ -31,7 +31,10 @@ const DEFAULT_ON = Object.fromEntries(FEATURES.map(f => [f.key, f.defaultOn]));
 
 export const isFeatureKey = (key) => FEATURE_KEYS.has(key);
 
-export const disabledFeatureMessage = feature => ({ type: 'text', text: `${FEATURES.find(f => f.key === feature)?.label || feature}功能目前開發測試中...` });
+// A feature switched off for a group stays quiet: no "under development" reply.
+// replyMessage and pushMessage drop silent messages and skip the request when
+// nothing is left, so this costs no reply and no push quota.
+export const disabledFeatureMessage = () => ({ silent: true });
 
 const isConfigurable = (sourceId) => typeof sourceId === 'string' && /^[CR]/.test(sourceId);
 

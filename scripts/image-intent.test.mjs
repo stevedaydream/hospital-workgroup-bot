@@ -33,8 +33,7 @@ test('photos offer consent without downloading; only the uploader can start a mu
     db.group_features.save('Ctest',{image_ai:false},'test');
     const count = replies.length;
     await photo('disabled');
-    assert.equal(replies.length,count + 1);
-    assert.equal(replies.at(-1).text,'照片 AI 辨識功能目前開發測試中...');
+    assert.equal(replies.length,count,'a switched-off feature stays quiet');
   `], {env:{...process.env,SQLITE_PATH:':memory:'},encoding:'utf8'});
   assert.equal(result.status, 0, result.stderr || result.stdout);
 });

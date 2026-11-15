@@ -37,8 +37,9 @@ test('all mention webhook saves globally once, stages similarities, and respects
     assert.equal(db.note_reviews.list().length,1);
     assert.match(replies.at(-1).text,/待確認公告/);
     db.group_features.save('Ctest',{notes:false},'test');
+    const quiet=replies.length;
     await send('four','@All 全新公告');
-    assert.match(replies.at(-1).text,/注意事項功能目前開發測試中/);
+    assert.equal(replies.length,quiet,'a switched-off feature stays quiet');
     assert.equal((await db.general_notes.getAll()).length,1);
   `], { env:{...process.env,SQLITE_PATH:':memory:'},encoding:'utf8' });
   assert.equal(child.status,0,child.stderr||child.stdout);

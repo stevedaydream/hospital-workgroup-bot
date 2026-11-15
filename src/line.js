@@ -246,201 +246,92 @@ function commandFeature(text) {
   return COMMAND_FEATURES.find(([re]) => re.test(text))?.[1] ?? null;
 }
 
+// One accent colour, grouped two-column tiles, admin tucked into the footer.
+const MENU_COLORS = { accent: '#0f5f58', ink: '#17212b', muted: '#66727c', tile: '#f1f6f5', line: '#e1e6e9' };
+
+function menuTile([icon, label, action]) {
+  return {
+    type: "box", layout: "vertical", flex: 1, spacing: "xs",
+    backgroundColor: MENU_COLORS.tile, cornerRadius: "12px", paddingAll: "12px",
+    action,
+    contents: [
+      { type: "text", text: icon, size: "xl", align: "center" },
+      { type: "text", text: label, size: "sm", weight: "bold", color: MENU_COLORS.ink, align: "center", wrap: true }
+    ]
+  };
+}
+
+/**
+ * A titled group of tiles; nothing when every tile in it is switched off.
+ * Three tiles share one row, otherwise two per row, so no row is left half empty.
+ */
+function menuSection(title, tiles) {
+  const items = tiles.filter(Boolean);
+  if (!items.length) return [];
+  const perRow = items.length === 3 ? 3 : 2;
+  const rows = [];
+  for (let i = 0; i < items.length; i += perRow) {
+    const row = items.slice(i, i + perRow).map(menuTile);
+    while (row.length < perRow) row.push({ type: "box", layout: "vertical", flex: 1, contents: [] });
+    rows.push({ type: "box", layout: "horizontal", spacing: "sm", contents: row });
+  }
+  return [
+    { type: "text", text: title, size: "xs", weight: "bold", color: MENU_COLORS.muted, margin: "lg" },
+    { type: "box", layout: "vertical", spacing: "sm", margin: "sm", contents: rows }
+  ];
+}
+
 function getMainMenuFlex(sourceId) {
   const on = (feature) => featureEnabled(sourceId, feature);
   const liffUrl = `https://liff.line.me/${LIFF_NOTES_ID}?groupId=${sourceId}`;
   const adminLiffUrl = `https://liff.line.me/${process.env.LIFF_ADMIN_ID || 'placeholder_admin_liff_id'}?groupId=${sourceId}`;
   const calendarLiffUrl = `https://liff.line.me/${process.env.LIFF_CALENDAR_ID || 'placeholder_calendar_liff_id'}?groupId=${sourceId}`;
   const dispatchLiffUrl = `https://liff.line.me/${LIFF_DISPATCH_ID}?groupId=${sourceId}`;
-  
+  const uri = (label, link) => ({ type: "uri", label, uri: link });
+  // message actions trigger a reply, which LINE does not bill
+  const say = (label, text) => ({ type: "message", label, text });
+  const schedule = medbaseEnabled;
+
   return {
     type: "flex",
-    altText: "醫院工作群組優化助手 - 主選單",
+    altText: "醫院工作助手 - 主選單",
     contents: {
       type: "bubble",
       size: "giga",
-      header: {
-        type: "box",
-        layout: "vertical",
-        backgroundColor: "#e6f4f2",
-        paddingAll: "20px",
-        contents: [
-          {
-            type: "text",
-            text: "醫院工作助手",
-            color: "#0f5f58",
-            weight: "bold",
-            size: "xl"
-          },
-          {
-            type: "text",
-            text: "Hospital Workgroup Assistant",
-            color: "#4f5d68",
-            size: "xs",
-            margin: "xs"
-          }
-        ]
-      },
       body: {
         type: "box",
         layout: "vertical",
-        backgroundColor: "#ffffff",
         paddingAll: "20px",
-        spacing: "md",
         contents: [
-          {
-            type: "text",
-            text: "💡 便捷功能選單",
-            color: "#17212b",
-            weight: "bold",
-            size: "md"
-          },
-          on('notes') && {
-            type: "button",
-            action: {
-              type: "uri",
-              label: "📝 共同編輯注意事項",
-              uri: liffUrl
-            },
-            style: "primary",
-            color: "#0369a1",
-            height: "sm",
-            margin: "md"
-          },
-          on('calendar') && {
-            type: "button",
-            action: {
-              type: "uri",
-              label: "📅 病房行事曆與行程",
-              uri: calendarLiffUrl
-            },
-            style: "primary",
-            color: "#6d28d9",
-            height: "sm",
-            margin: "md"
-          },
-          on('travel') && {
-            type: "button",
-            action: {
-              type: "uri",
-              label: "✈️ NP/醫師休假與出國登記",
-              uri: travelLiffUrl()
-            },
-            style: "primary",
-            color: "#0f766e",
-            height: "sm",
-            margin: "md"
-          },
-          on('image_ai') && {
-            type: "button",
-            action: { type: "message", label: "📷 辨識照片", text: "辨識照片" },
-            style: "primary",
-            height: "sm",
-            margin: "md"
-          },
-          on('image_ai') && {
-            type: "button",
-            action: {
-              type: "uri",
-              label: "🔍 審查今日 Case 分流",
-              uri: dispatchLiffUrl
-            },
-            style: "primary",
-            color: "#047857",
-            height: "sm",
-            margin: "md"
-          },
-          {
-            type: "button",
-            action: {
-              type: "uri",
-              label: "⚙️ ID 與對照管理後台",
-              uri: adminLiffUrl
-            },
-            style: "primary",
-            color: "#be123c",
-            height: "sm",
-            margin: "md"
-          },
-          on('medbase_lookup') && {
-            type: "button",
-            action: { type: "message", label: "MedBase 功能／自費查詢", text: "MedBase 查詢" },
-            style: "primary", color: "#0f766e", height: "sm", margin: "md"
-          },
-          // MedBase 排班：查詢用 message action，觸發的是免費的回覆
-          ...(medbaseEnabled && (on('duty') || on('my_schedule')) ? [
-            {
-              type: "box",
-              layout: "horizontal",
-              spacing: "sm",
-              margin: "md",
-              contents: [
-                on('my_schedule') && { type: "button", action: { type: "message", label: "🗓 我的班", text: "我的班" }, style: "secondary", height: "sm" },
-                on('duty') && { type: "button", action: { type: "message", label: "📋 近期值班", text: "近期值班" }, style: "secondary", height: "sm" }
-              ].filter(Boolean)
-            },
-            {
-              type: "button",
-              action: { type: "uri", label: "📱 開啟 MedBase 班表", uri: MEDBASE_APP_URL },
-              style: "primary",
-              color: "#4338ca",
-              height: "sm",
-              margin: "sm"
-            }
-          ] : []),
-          ...(on('image_ai') ? [{
-            type: "separator",
-            color: "#e1e6e9",
-            margin: "md"
-          },
-          {
-            type: "box",
-            layout: "vertical",
-            spacing: "xs",
-            margin: "md",
-            contents: [
-              {
-                type: "text",
-                text: "📋 Case 分配表自動分流指引：",
-                color: "#4f5d68",
-                size: "xs",
-                weight: "bold"
-              },
-              {
-                type: "text",
-                text: "• 上傳分配表後，點選「辨識 Case 表／行程」",
-                color: "#36434e",
-                size: "xs"
-              },
-              {
-                type: "text",
-                text: "• 系統將自動辨識醫師人名與科別",
-                color: "#36434e",
-                size: "xs"
-              },
-              {
-                type: "text",
-                text: "• 於每日早上 07:30 自動分流發送至各科室群組",
-                color: "#36434e",
-                size: "xs"
-              }
-            ]
-          }] : [])
-        ].filter(Boolean)
+          { type: "text", text: "醫院工作助手", size: "lg", weight: "bold", color: MENU_COLORS.accent },
+          { type: "text", text: "點選要使用的功能", size: "xs", color: MENU_COLORS.muted, margin: "xs" },
+          ...menuSection("日常", [
+            on('notes') && ["📝", "注意事項", uri("注意事項", liffUrl)],
+            on('calendar') && ["📅", "行事曆", uri("行事曆", calendarLiffUrl)],
+            on('travel') && ["✈️", "休假／出國", uri("休假出國", travelLiffUrl())]
+          ]),
+          ...menuSection("Case 分配表", [
+            on('image_ai') && ["📷", "辨識照片", say("辨識照片", "辨識照片")],
+            on('image_ai') && ["🔍", "審查分流", uri("審查分流", dispatchLiffUrl)],
+            on('dispatch') && ["📋", "今日 Case", say("今日 Case", "今日 Case")]
+          ]),
+          ...menuSection("排班", [
+            schedule && on('my_schedule') && ["🗓", "我的班", say("我的班", "我的班")],
+            schedule && on('duty') && ["👥", "近期值班", say("近期值班", "近期值班")],
+            on('medbase_lookup') && ["🔎", "MedBase 查詢", say("MedBase 查詢", "MedBase 查詢")],
+            schedule && (on('duty') || on('my_schedule')) && ["📱", "開啟班表", uri("開啟班表", MEDBASE_APP_URL)]
+          ])
+        ]
       },
       footer: {
         type: "box",
-        layout: "vertical",
-        backgroundColor: "#f6f8f9",
+        layout: "horizontal",
+        paddingAll: "12px",
+        borderColor: MENU_COLORS.line,
+        borderWidth: "1px",
+        action: uri("管理後台", adminLiffUrl),
         contents: [
-          {
-            type: "text",
-            text: "設計給臨床同仁的行政貼心工具",
-            color: "#66727c",
-            size: "xxs",
-            align: "center",
-            margin: "xs"
-          }
+          { type: "text", text: "⚙️ 管理後台（群組 ID、醫師對照）", size: "xs", color: MENU_COLORS.muted, align: "center" }
         ]
       }
     }

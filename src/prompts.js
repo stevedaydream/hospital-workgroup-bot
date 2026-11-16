@@ -13,7 +13,14 @@ Based on the type, extract the following information in JSON format:
 For "CASE_TABLE":
 1. "doctors": Array of Doctor Names (e.g., 陳鍾沛, 王彥傑, 王世峰, etc. - extract only the names).
 2. "departments": Array of Department Codes (e.g. URO, ORTHO, etc.).
-3. "date": The date of the case table (e.g. 5/28, 2026/05/28, 115/05/28. Normalize to YYYY/MM/DD. Convert ROC calendar to AD year, e.g. 115 -> 2026. If no date is found, return null).
+3. "date": The date printed on the case table (e.g. 5/28, 2026/05/28, 115/05/28, 2026年11月16日. Normalize to YYYY/MM/DD. Convert ROC calendar to AD year, e.g. 115 -> 2026. If no date is found, return null).
+4. "assignments": One object per row of the NP/PGY column, as printed. Each object has:
+   - "ward": the unit of that row (e.g. "9B"), or "" if none.
+   - "np": the NP/PGY name in that row, exactly as written.
+   - "tel": that row's TEL / extension (digits only), or "".
+   - "shift": that row's duty label (e.g. "白八", "夜八"), or "" if the duty cell is empty.
+   - "doctors": the doctors (or department codes such as "Uro", "GS") listed in that row, each {"name": "...", "cases": number or null} where cases is the number written next to the name.
+   Include rows that have an NP but no doctors (e.g. a night-duty NP). If the table has no NP column, return [].
 
 For "WARD_NOTE":
 1. "notes": Array of objects representing notes/announcements found in the image. Each object must have:
@@ -33,6 +40,7 @@ Return the result as a JSON object containing:
 - doctors: Array of strings (only if type is CASE_TABLE, else empty array)
 - departments: Array of strings (only if type is CASE_TABLE, else empty array)
 - date: String or null (only if type is CASE_TABLE, else null)
+- assignments: Array of objects (only if type is CASE_TABLE, else empty array)
 - notes: Array of objects (only if type is WARD_NOTE, else empty array)
 - events: Array of objects (only if type is CALENDAR, else empty array)`;
 
@@ -51,6 +59,7 @@ export function normalizeSingleResult(parsed) {
     doctors: Array.isArray(parsed.doctors) ? parsed.doctors : [],
     departments: Array.isArray(parsed.departments) ? parsed.departments : [],
     date: parsed.date || null,
+    assignments: Array.isArray(parsed.assignments) ? parsed.assignments : [],
     notes: Array.isArray(parsed.notes) ? parsed.notes : [],
     events: Array.isArray(parsed.events) ? parsed.events : []
   };

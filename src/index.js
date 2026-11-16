@@ -1,5 +1,6 @@
 import { parseTravel, calendarAbsences } from './travel.js';
 import { todayInTaipei, nextDispatchDate, dispatchMorningLabel } from './util/date.js';
+import { pushSlotPassed } from './case-table.js';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { serve } from '@hono/node-server';
@@ -544,13 +545,9 @@ app.delete('/api/doctor-mappings/:id', async (c) => {
 app.get('/api/dispatch-cache', async (c) => {
   const msgId = c.req.query('msgId');
   try {
-    const pending = await db.daily_dispatch_cache.getPending();
-    if (msgId) {
-      const filtered = pending.filter(p => p.source_image_message_id === msgId);
-      return c.json(filtered);
-    } else {
-      return c.json(pending);
-    }
+    // A photo is filed under the date printed on it, which may be today.
+    if (msgId) return c.json(await db.daily_dispatch_cache.getByMessage(msgId));
+    return c.json(await db.daily_dispatch_cache.getPending());
   } catch (error) {
     return c.json({ error: error.message }, 500);
   }
@@ -568,15 +565,20 @@ app.post('/api/dispatch-cache/confirm', async (c) => {
   if (!selected.length && !unselected.length) {
     return c.json({ error: '沒有任何轉發對象可以設定' }, 400);
   }
-  const dispatchDate = nextDispatchDate();
+  const dispatchDate = db.case_tables.get(messageId)?.table_date
+    || (await db.daily_dispatch_cache.getByMessage(messageId))[0]?.dispatch_date
+    || nextDispatchDate();
+  const pushPassed = pushSlotPassed(dispatchDate);
   try {
     for (const groupId of selected) await db.daily_dispatch_cache.add(groupId, messageId, true, dispatchDate);
     for (const groupId of unselected) await db.daily_dispatch_cache.remove(groupId, dispatchDate);
 
     const allMappings = await db.doctor_group_mapping.getAll();
     const names = ids => [...new Set(ids.map(id => allMappings.find(m => m.line_group_id === id)?.group_name).filter(Boolean))];
-    const pushed = names(selected.filter(id => featureEnabled(id, 'dispatch_push')));
-    const shared = names(selected.filter(id => !featureEnabled(id, 'dispatch_push')));
+    // Today's 07:30 push has already run for a table filed for this morning.
+    const willPush = id => !pushPassed && featureEnabled(id, 'dispatch_push');
+    const pushed = names(selected.filter(willPush));
+    const shared = names(selected.filter(id => !willPush(id)));
     const when = `${dispatchMorningLabel(dispatchDate)} ${Number(dispatchDate.slice(5, 7))}/${Number(dispatchDate.slice(8, 10))} 07:30`;
     const list = groupNames => groupNames.map(name => `• ${name}`).join('\n');
     let confirmText = `✅ Case 分配表轉發對象設定成功！\n\n`;

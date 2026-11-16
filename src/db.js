@@ -250,7 +250,16 @@ sqlite.exec(`
     error    TEXT
   );
   CREATE INDEX IF NOT EXISTS idx_push_log_sent ON push_log (sent_at);
+
+  -- What the AI read off a case-table photo: its printed date and the NP rows.
+  CREATE TABLE IF NOT EXISTS case_tables (
+    message_id   TEXT PRIMARY KEY,
+    table_date   TEXT NOT NULL,
+    assignments  TEXT NOT NULL DEFAULT '[]',
+    created_at   TEXT NOT NULL
+  );
 `);
+sqlite.prepare('DELETE FROM case_tables WHERE table_date < date(?, ?)').run(todayInTaipei(), `-${DISPATCH_RETENTION_DAYS} days`);
 sqlite.prepare("DELETE FROM push_log WHERE sent_at < datetime('now', ?)").run(`-${PUSH_LOG_RETENTION_DAYS} days`);
 
 // Old rows have no operational value and only make the confirmation UI noisy.
@@ -576,6 +585,14 @@ export const db = {
       return this.getForDate(nextDispatchDate());
     },
 
+    /** Rows still to come for one photo, whatever date it was filed under. */
+    async getByMessage(messageId) {
+      return sqlite
+        .prepare('SELECT * FROM daily_dispatch_cache WHERE source_image_message_id = ? AND dispatch_date >= ? ORDER BY id')
+        .all(messageId, todayInTaipei())
+        .map(toDispatchRow);
+    },
+
     async add(targetLineGroupId, sourceImageMessageId, isConfirmed, dispatchDate = nextDispatchDate()) {
       sqlite
         .prepare(
@@ -862,6 +879,22 @@ export const db = {
 
     setVersions(lineGroupId, versions) {
       sqlite.prepare('UPDATE medbase_groups SET last_versions = ? WHERE line_group_id = ?').run(JSON.stringify(versions), lineGroupId);
+    }
+  },
+
+  case_tables: {
+    save(messageId, tableDate, assignments = []) {
+      sqlite.prepare(
+        `INSERT INTO case_tables (message_id, table_date, assignments, created_at) VALUES (?, ?, ?, ?)
+         ON CONFLICT (message_id) DO UPDATE SET table_date = excluded.table_date, assignments = excluded.assignments`
+      ).run(messageId, tableDate, JSON.stringify(assignments), nowIso());
+    },
+    get(messageId) {
+      const row = sqlite.prepare('SELECT * FROM case_tables WHERE message_id = ?').get(messageId);
+      if (!row) return null;
+      let assignments = [];
+      try { assignments = JSON.parse(row.assignments) || []; } catch { /* keep empty */ }
+      return { ...row, assignments };
     }
   },
 

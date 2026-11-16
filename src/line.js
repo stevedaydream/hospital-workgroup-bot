@@ -13,6 +13,7 @@ import { allAnnouncement } from './all-announcement.js';
 import { collectShared, handleSharedCommand, handleSharedPostback, SHARED_COMMANDS } from './shared-announcement.js';
 import { prepareLeaveAlias, leaveAliasPostback, leaveRegistrationReply } from './leave-alias.js';
 import { todayInTaipei, dayOfWeek, nextDispatchDate, dispatchMorningLabel } from './util/date.js';
+import { resolveTableDate, normalizeAssignments, pushSlotPassed } from './case-table.js';
 import { featureEnabled, disabledFeatureMessage as disabledMessage } from './features.js';
 import { IMAGES_DIR } from './images.js';
 import { CASE_PULL_COMMAND, casePullReply } from './case-pull.js';
@@ -338,7 +339,7 @@ function getMainMenuFlex(sourceId) {
   };
 }
 
-function getOcrSummaryFlex(dispatchedGroups, hasUro, messageId, sourceId, dateWarning = null) {
+function getOcrSummaryFlex(dispatchedGroups, hasUro, messageId, sourceId, dateWarning = null, tableDate = nextDispatchDate()) {
   const selectUrl = `https://liff.line.me/${LIFF_DISPATCH_ID}?msgId=${messageId}&sourceId=${sourceId}`;
   
   const contents = [
@@ -348,6 +349,13 @@ function getOcrSummaryFlex(dispatchedGroups, hasUro, messageId, sourceId, dateWa
       weight: "bold",
       size: "md",
       color: "#17212b"
+    },
+    {
+      type: "text",
+      text: `📅 ${tableDate === todayInTaipei() ? '今日' : '明日'}（${Number(tableDate.slice(5, 7))}/${Number(tableDate.slice(8, 10))}）的分配表`,
+      color: "#4f5d68",
+      size: "xs",
+      margin: "sm"
     }
   ];
 
@@ -369,7 +377,7 @@ function getOcrSummaryFlex(dispatchedGroups, hasUro, messageId, sourceId, dateWa
   };
   const pushGroups = dispatchedGroups.filter(g => g.push);
   const shareGroups = dispatchedGroups.filter(g => !g.push);
-  if (pushGroups.length) listGroups(`【已自動排程${dispatchMorningLabel(nextDispatchDate())} 07:30 推播】：`, pushGroups);
+  if (pushGroups.length) listGroups(`【已自動排程${dispatchMorningLabel(tableDate)} 07:30 推播】：`, pushGroups);
   if (shareGroups.length) listGroups('【請按「分享分配表到群組」傳送（不扣推播額度）】：', shareGroups);
   if (!dispatchedGroups.length) {
     contents.push({
@@ -861,38 +869,28 @@ async function triggerBatchProcess(sourceId, sessionKey) {
       }
     } else if (ocrResult.type === 'CASE_TABLE') {
       // --- 🔴 CASE_TABLE Pipeline: Schedule case dispatch ---
-      // Validate date matching today or tomorrow (Taiwan Time UTC+8)
-      let dateWarning = null;
-      if (ocrResult.date) {
-        try {
-          const now = new Date();
-          const tzOffset = 8 * 60 * 60 * 1000;
-          const todayStr = new Date(now.getTime() + tzOffset).toISOString().split('T')[0].replace(/-/g, '/');
-          const tomorrowStr = new Date(now.getTime() + 24 * 60 * 60 * 1000 + tzOffset).toISOString().split('T')[0].replace(/-/g, '/');
-          
-          const normOcr = ocrResult.date.replace(/-/g, '/');
-          if (normOcr !== todayStr && normOcr !== tomorrowStr) {
-            dateWarning = `分配表日期為 ${ocrResult.date}，與今日(${todayStr})或明日(${tomorrowStr})不符，請確認是否上傳正確！`;
-          }
-        } catch (dateErr) {
-          console.error('Error during date validation:', dateErr);
-        }
-      }
+      // The date printed on the table decides which day it is for; upload time only as a fallback.
+      const { date: tableDate, warning: dateWarning } = resolveTableDate(ocrResult.date);
+      const assignments = normalizeAssignments(ocrResult.assignments);
+      db.case_tables.save(messageId, tableDate, assignments);
+      const pushPassed = pushSlotPassed(tableDate);
 
       // Resolve mappings
       const dispatchedGroups = [];
       let hasUro = false;
 
-      // Process Direct Doctors
-      if (ocrResult.doctors && Array.isArray(ocrResult.doctors)) {
-        for (const docName of ocrResult.doctors) {
-          const mappings = await db.doctor_group_mapping.getByMatchKey(docName);
-          for (const map of mappings) {
-            if (!featureEnabled(map.line_group_id, 'dispatch')) continue;
-            if (map.type === 'DIRECT') {
-              await db.daily_dispatch_cache.add(map.line_group_id, messageId, true);
-              dispatchedGroups.push({ name: `${map.group_name} (${docName}醫師)`, push: featureEnabled(map.line_group_id, 'dispatch_push') });
-            }
+      // Process Direct Doctors (names in the NP rows count too, in case the list missed one)
+      const doctorNames = [...new Set([
+        ...(Array.isArray(ocrResult.doctors) ? ocrResult.doctors : []),
+        ...assignments.flatMap(row => row.doctors.map(d => d.name))
+      ].filter(name => typeof name === 'string' && name.trim()))];
+      for (const docName of doctorNames) {
+        const mappings = await db.doctor_group_mapping.getByMatchKey(docName);
+        for (const map of mappings) {
+          if (!featureEnabled(map.line_group_id, 'dispatch')) continue;
+          if (map.type === 'DIRECT') {
+            await db.daily_dispatch_cache.add(map.line_group_id, messageId, true, tableDate);
+            dispatchedGroups.push({ name: `${map.group_name} (${docName}醫師)`, push: !pushPassed && featureEnabled(map.line_group_id, 'dispatch_push') });
           }
         }
       }
@@ -908,7 +906,7 @@ async function triggerBatchProcess(sourceId, sessionKey) {
               hasUro = true;
               // Add all to Cache as unconfirmed by default
               for (const map of flexibleMaps) {
-                await db.daily_dispatch_cache.add(map.line_group_id, messageId, false);
+                await db.daily_dispatch_cache.add(map.line_group_id, messageId, false, tableDate);
               }
             }
           }
@@ -916,7 +914,7 @@ async function triggerBatchProcess(sourceId, sessionKey) {
       }
 
       // Send feedback response to group
-      const flexSummaryCard = getOcrSummaryFlex(dispatchedGroups, hasUro, messageId, sourceId, dateWarning);
+      const flexSummaryCard = getOcrSummaryFlex(dispatchedGroups, hasUro, messageId, sourceId, dateWarning, tableDate);
       resultMessages.push(flexSummaryCard);
     } else {
       // --- 🔴 UNKNOWN/OTHER Pipeline ---

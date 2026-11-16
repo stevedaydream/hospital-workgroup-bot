@@ -15,7 +15,8 @@ import { verifySignature, handleWebhookEvent, pushMessage, GROUP_WINDOW_MS } fro
 import { getJobView, getJob, createJob, updateJob, trackModelStage } from './progress.js';
 import { analyzeRoster, isModelLoaded, modelLabel } from './ai.js';
 import { initializeScheduler, runDailyDispatch, runDailyReminders } from './scheduler.js';
-import { medbaseEnabled, verifyNotifySignature, deliverNotice, DEFAULT_MEDBASE_GROUP, getAttendingRoster } from './medbase.js';
+import { medbaseEnabled, verifyNotifySignature, deliverNotice, DEFAULT_MEDBASE_GROUP, getAttendingRoster, getCachedRoster } from './medbase.js';
+import { mappingDepartment } from './doctor-roster.js';
 import { getGroupMemberCount, getPushQuota } from './line.js';
 import { FEATURES, isFeatureKey, effectiveFeatures, featureEnabled } from './features.js';
 import { startReviewAi, reviewAiStatus, startDraftAi, draftAiStatus } from './review-ai.js';
@@ -343,8 +344,10 @@ app.get('/api/doctor-mappings', async (c) => {
   const dept = c.req.query('dept');
   try {
     // auto_push: whether the 07:30 job pushes to this group, or it is shared by hand.
+    // department: from the MedBase roster, for the label; null when it is not known.
+    const roster = await getCachedRoster();
     const allMappings = (await db.doctor_group_mapping.getAll())
-      .map(m => ({ ...m, auto_push: featureEnabled(m.line_group_id, 'dispatch_push') }));
+      .map(m => ({ ...m, auto_push: featureEnabled(m.line_group_id, 'dispatch_push'), department: mappingDepartment(m, roster) }));
     if (dept) {
       const filtered = allMappings.filter(m => m.match_key.toUpperCase() === dept.toUpperCase());
       return c.json(filtered);

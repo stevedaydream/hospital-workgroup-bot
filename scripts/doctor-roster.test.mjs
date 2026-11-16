@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { doctorRoster } from '../src/doctor-roster.js';
+import { doctorRoster, mappingDepartment } from '../src/doctor-roster.js';
 
 test('roster keeps only attending names, departments and titles', () => {
   const rows = doctorRoster([
@@ -17,4 +17,18 @@ test('roster keeps only attending names, departments and titles', () => {
   ]);
   assert.throws(() => doctorRoster(null), /格式錯誤/);
   assert.deepEqual(doctorRoster([]), []);
+});
+
+test('a mapping is labelled with the department MedBase lists for it', () => {
+  const roster = [
+    { name: '王甲', department: '一般外科GS' },
+    { name: '李乙', department: '泌尿科URO' },
+    { name: '張丙', department: '眼科' },
+    { name: '張丙', department: '眼科OPH' }
+  ];
+  assert.equal(mappingDepartment({ type: 'DIRECT', match_key: '王甲' }, roster), '一般外科');
+  assert.equal(mappingDepartment({ type: 'DIRECT', match_key: '張丙' }, roster), '眼科', 'same department spelt two ways');
+  assert.equal(mappingDepartment({ type: 'FLEXIBLE', match_key: 'uro' }, roster), '泌尿科');
+  assert.equal(mappingDepartment({ type: 'DIRECT', match_key: '不在名單' }, roster), null);
+  assert.equal(mappingDepartment({ type: 'DIRECT', match_key: '王甲' }, null), null, 'MedBase unreachable');
 });

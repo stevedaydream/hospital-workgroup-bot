@@ -596,7 +596,7 @@
                 <div class="mapping-details">
                   <div class="mapping-main">
                     ${escapeHtml(map.match_key)} ➔ ${escapeHtml(map.group_name)}
-                    <span class="type-badge ${badgeClass}">${map.type === 'DIRECT' ? '醫師對應' : '科別審查'}</span>
+                    <span class="type-badge ${badgeClass}">${escapeHtml(map.department || (map.type === 'DIRECT' ? '醫師對應' : '科別審查'))}</span>
                   </div>
                   <div class="mapping-sub">${escapeHtml(map.line_group_id)}</div>
                 </div>

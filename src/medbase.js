@@ -53,6 +53,22 @@ export async function getAttendingRoster() {
   }
 }
 
+// The roster changes rarely; pages that only label departments read it at most hourly.
+const ROSTER_CACHE_MS = 60 * 60 * 1000;
+let rosterCache = { at: 0, roster: null };
+
+/** The attending roster for labels, or null if MedBase is off or unreachable. */
+export async function getCachedRoster() {
+  if (!medbaseEnabled) return null;
+  if (rosterCache.roster && Date.now() - rosterCache.at < ROSTER_CACHE_MS) return rosterCache.roster;
+  try {
+    rosterCache = { at: Date.now(), roster: await getAttendingRoster() };
+  } catch (error) {
+    console.error('[MedBase] roster for department labels:', error.message);
+  }
+  return rosterCache.roster;
+}
+
 // ----------------------------------------------------
 // Formatting
 // ----------------------------------------------------

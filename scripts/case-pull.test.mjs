@@ -62,8 +62,12 @@ test('until 20:00 today\'s table, after 20:00 tomorrow\'s, or that it is still t
   assert.match((await casePullReply('明天 case表', src(other), at('09:00')))[0].text, /明日（3\/11）/);
 });
 
-test('a table without this group\'s doctors says so instead of "to be uploaded"', async () => {
-  assert.equal((await casePullReply('今日 Case', src(third), at('09:00'))).text, '今日（3/10）的分配表沒有本群組的醫師。');
+test('a group without a doctor mapping still gets the table, with a reminder to set one up', async () => {
+  const reply = await casePullReply('今日 Case', src(third), at('09:00'));
+  assert.equal(reply[1].type, 'image');
+  assert.match(reply[0].text, /今日（3\/10）Case 分配表/);
+  assert.match(reply[0].text, /尚未設定醫師對照/);
+  assert.match(reply[0].text, new RegExp(`groupId=${third}`));
 });
 
 test('the reply tells the group which NP and extension to call for each of its doctors', async () => {
@@ -77,4 +81,16 @@ test('the reply tells the group which NP and extension to call for each of its d
   assert.match(header.text, /王小明（5 床） → 9B 林小美 分機 60001/);
   assert.doesNotMatch(header.text, /李大華/, 'only this group\'s doctors');
   assert.match(header.text, /值班 NP：夜八 陳小芳 60002/);
+});
+
+test('the latest table uploaded for the day is the one given, to every group', async () => {
+  fs.writeFileSync(path.join(IMAGES_DIR, '777.jpg'), 'jpg');
+  db.case_tables.save('777', '2030-03-12', [
+    { ward: '9A', np: '林小美', tel: '60001', shift: '', doctors: [{ name: '李大華', cases: 2 }] }
+  ]);
+  const mapped = await casePullReply('今日 Case', src(group), new Date('2030-03-12T10:00:00+08:00'));
+  assert.match(mapped[1].originalContentUrl, /\/images\/777\.jpg/);
+  assert.match(mapped[0].text, /本群組對應的醫師不在這張分配表上/);
+  const unmapped = await casePullReply('今日 Case', src(third), new Date('2030-03-12T10:00:00+08:00'));
+  assert.match(unmapped[1].originalContentUrl, /\/images\/777\.jpg/);
 });

@@ -889,6 +889,11 @@ export const db = {
          ON CONFLICT (message_id) DO UPDATE SET table_date = excluded.table_date, assignments = excluded.assignments`
       ).run(messageId, tableDate, JSON.stringify(assignments), nowIso());
     },
+    /** The most recently uploaded table for a Taiwan date. */
+    latestForDate(tableDate) {
+      const row = sqlite.prepare('SELECT message_id FROM case_tables WHERE table_date = ? ORDER BY created_at DESC, rowid DESC LIMIT 1').get(tableDate);
+      return row ? this.get(row.message_id) : null;
+    },
     get(messageId) {
       const row = sqlite.prepare('SELECT * FROM case_tables WHERE message_id = ?').get(messageId);
       if (!row) return null;

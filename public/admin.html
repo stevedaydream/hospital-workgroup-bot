@@ -392,8 +392,8 @@
           <div class="form-group">
             <label class="form-label" style="font-size: 12px;">對應分流類型 (Mapping Type)</label>
             <select class="input-field" id="input-mapping-type" style="padding: 10px 14px; font-size: 13px;">
-              <option value="DIRECT">DIRECT (單一醫師直對 - 骨科模式)</option>
-              <option value="FLEXIBLE">FLEXIBLE (一對多模糊科別 - 泌尿科模式)</option>
+              <option value="DIRECT">DIRECT（醫師姓名直接對應，各科通用）</option>
+              <option value="FLEXIBLE">FLEXIBLE（科別代碼如 URO，上傳後審查決定）</option>
             </select>
           </div>
           
@@ -596,7 +596,7 @@
                 <div class="mapping-details">
                   <div class="mapping-main">
                     ${escapeHtml(map.match_key)} ➔ ${escapeHtml(map.group_name)}
-                    <span class="type-badge ${badgeClass}">${map.type}</span>
+                    <span class="type-badge ${badgeClass}">${map.type === 'DIRECT' ? '醫師對應' : '科別審查'}</span>
                   </div>
                   <div class="mapping-sub">${escapeHtml(map.line_group_id)}</div>
                 </div>

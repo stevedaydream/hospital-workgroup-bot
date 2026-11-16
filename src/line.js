@@ -382,7 +382,7 @@ function getOcrSummaryFlex(dispatchedGroups, hasUro, messageId, sourceId, dateWa
   if (!dispatchedGroups.length) {
     contents.push({
       type: "text",
-      text: "【無直接比對到之骨科醫師】",
+      text: "【沒有比對到已設定對應的醫師】",
       color: "#4f5d68",
       size: "xs",
       margin: "md"

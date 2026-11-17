@@ -48,3 +48,12 @@ test('contextless entry prompts for a group and selecting it fetches that calend
   assert.equal(calls.at(-1), '/api/events?groupId=Cnotice&absences=1');
   assert.equal(rendered[0].title, '課程');
 });
+
+test('a guessed last group never survives once the LINE context is known', () => {
+  const sandbox = calendar('');                         // rich menu, opened outside a group
+  vm.runInContext("groupId = 'Clast'; parseGroupId()", sandbox);
+  assert.equal(vm.runInContext('groupId', sandbox), '');
+  const inGroup = calendar('', { groupId: 'Cchat' });  // rich menu, opened inside another group
+  vm.runInContext("groupId = 'Clast'; parseGroupId()", inGroup);
+  assert.equal(vm.runInContext('groupId', inGroup), 'Cchat');
+});

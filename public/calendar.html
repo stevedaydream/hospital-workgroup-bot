@@ -212,6 +212,8 @@
     }
 
     function parseGroupId() {
+      // Decided afresh from the link or LINE context; an early guess (initLiff) never survives this.
+      groupId = '';
       const urlParams = new URLSearchParams(window.location.search);
       const queryGroupId = urlParams.get('groupId');
       if (queryGroupId) {
@@ -270,6 +272,13 @@
 
     // Initialize LIFF
     async function initLiff() {
+      // A link that names its group can draw the copy kept on the phone before LINE sign-in finishes.
+      // Without one (the rich menu), the group seen last on this phone is drawn as a guess;
+      // once LINE says which chat this is, parseGroupId() below replaces it.
+      let lastGroup = '';
+      try { lastGroup = localStorage.getItem('calendar:lastGroup') || ''; } catch {}
+      const earlyGroup = window.__linkParam('groupId') || lastGroup;
+      if (earlyGroup && window.__hasCopy(`/api/events?groupId=${encodeURIComponent(earlyGroup)}&absences=1`)) { groupId = earlyGroup; fetchEventsList(); }
       try {
         const resConfig = await fetch('/api/config');
         const config = await resConfig.json();
@@ -277,7 +286,11 @@
         await liff.init({ liffId: config.LIFF_CALENDAR_ID });
 
         if (liff.isLoggedIn()) window.__setIdToken(liff.getIDToken());
-        
+
+        // The calendar first; the profile below only fills the name badge.
+        parseGroupId();
+        const listing = fetchEventsList();
+
         if (liff.isLoggedIn()) {
           const profile = await liff.getProfile();
           userName = profile.displayName;
@@ -290,12 +303,12 @@
           }
           document.getElementById('user-badge').style.display = 'flex';
 
-          // Sync user
-          await fetch('/api/users/sync', {
+          // Background: the page does not wait for the user list to be updated.
+          fetch('/api/users/sync', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ lineUserId: profile.userId, displayName: userName })
-          });
+          }).catch(() => {});
         } else {
           console.warn("LINE LIFF not logged in.");
           userName = "臨床同仁";
@@ -303,8 +316,7 @@
           document.getElementById('user-badge').style.display = 'flex';
         }
         
-        parseGroupId();
-        await fetchEventsList();
+        await listing;
       } catch (err) {
         console.error('LIFF initialization failed', err);
         document.getElementById('meta-info').innerText = '行事曆連線成功';
@@ -324,6 +336,7 @@
         if (response.ok) {
           const events = await response.json();
           renderEventsList(events);
+          try { localStorage.setItem('calendar:lastGroup', groupId); } catch {}
         } else {
           document.getElementById('events-list').innerHTML = '<div style="text-align: center; color: var(--color-rose); padding: 40px;">無法取得行事曆資料</div>';
         }

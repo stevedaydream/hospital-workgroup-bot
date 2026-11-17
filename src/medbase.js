@@ -30,7 +30,33 @@ const MY_SCHEDULE_DAYS = 7;
 export const medbaseEnabled = Boolean(MEDBASE_API_KEY);
 if (medbaseEnabled) console.log(`MedBase: integration enabled (${MEDBASE_API_URL})`);
 
-async function callMedbase(action, args = {}) {
+// MedBase reads go through Google Apps Script and take seconds, so schedule
+// and duty answers are kept for a while. Swap notices and newly published
+// schedules clear them early; edits nobody announces show up within the TTL.
+// Self-pay items stay live: MedBase rechecks the asker's permission on every page.
+const CACHED_ACTIONS = new Set(['day', 'duty', 'person']);
+const MEDBASE_CACHE_MS = 10 * 60 * 1000;
+const MEDBASE_CACHE_MAX = 500;
+const medbaseCache = new Map();   // key → { at, promise }
+
+export function clearMedbaseCache() {
+  medbaseCache.clear();
+}
+
+function callMedbase(action, args = {}) {
+  if (!CACHED_ACTIONS.has(action)) return callMedbaseLive(action, args);
+  const key = `${action}:${JSON.stringify(args)}`;
+  const hit = medbaseCache.get(key);
+  if (hit && Date.now() - hit.at < MEDBASE_CACHE_MS) return hit.promise;
+  // The promise itself is kept, so questions asked at the same moment share one request.
+  const promise = callMedbaseLive(action, args);
+  medbaseCache.set(key, { at: Date.now(), promise });
+  promise.catch(() => { if (medbaseCache.get(key)?.promise === promise) medbaseCache.delete(key); });
+  if (medbaseCache.size > MEDBASE_CACHE_MAX) medbaseCache.delete(medbaseCache.keys().next().value);
+  return promise;
+}
+
+async function callMedbaseLive(action, args = {}) {
   const res = await fetch(`${MEDBASE_API_URL}/api/bot`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${MEDBASE_API_KEY}` },
@@ -255,6 +281,7 @@ export function verifyNotifySignature(rawBody, timestamp, signature, now = Date.
 
 /** Pushes a notice to every LINE account linked to `toHis`; returns how many were sent. */
 export async function deliverNotice({ toHis, text }, pushMessage) {
+  clearMedbaseCache();   // a swap changed someone's shifts
   const links = db.medbase_links.getByHis(String(toHis || '').trim());
   for (const link of links) {
     await pushMessage(link.line_user_id, { type: 'text', text });
@@ -306,6 +333,7 @@ export async function checkPublished(pushMessage) {
       const baseline = Object.keys(g.last_versions).length === 0;
       const changed = watched.filter(k => current[k] && current[k] !== g.last_versions[k]);
       db.medbase_groups.setVersions(g.line_group_id, current);
+      if (changed.length) clearMedbaseCache();   // a schedule was published or updated
       if (baseline || !changed.length) continue;
 
       const months = changed.map(k => {

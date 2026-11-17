@@ -554,6 +554,8 @@
       renderCategoryUI();
 
       try {
+        // Draw the copy kept on the phone at once, before LINE sign-in finishes.
+        if (window.__hasCopy('/api/notes')) fetchNotesList();
         const resConfig = await fetch('/api/config');
         const config = await resConfig.json();
 
@@ -574,12 +576,12 @@
           }
           document.getElementById('user-badge').style.display = 'flex';
 
-          // Sync user profile
-          await fetch('/api/users/sync', {
+          // Background: the page does not wait for the user list to be updated.
+          fetch('/api/users/sync', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ lineUserId: profile.userId, displayName: userName })
-          });
+          }).catch(() => {});
         } else {
           console.warn("LINE LIFF not logged in. Running in standalone browser mode.");
           userName = "臨床測試人員";
@@ -597,6 +599,12 @@
     }
 
     // Load Notices List
+    // A copy kept on the phone was drawn first; redraw when the server's answer differs (js/api.js).
+    window.addEventListener('api:updated', e => {
+      if (e.detail.path === '/api/notes') fetchNotesList();
+      else if (e.detail.path === '/api/note-reviews') fetchNoteReviews();
+    });
+
     async function fetchNotesList() {
       await fetchNoteReviews();
       try {
@@ -616,7 +624,7 @@
     async function fetchNoteReviews() {
       const list = document.getElementById('review-list');
       try {
-        const response = await fetch('/api/note-reviews', { cache: 'no-store' });
+        const response = await fetch('/api/note-reviews');
         if (!response.ok) throw new Error('暫時無法讀取，請重新開啟目錄。');
         const reviews = await response.json();
         document.getElementById('review-summary').textContent = `待確認公告（${reviews.length}）`;

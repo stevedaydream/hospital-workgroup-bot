@@ -532,6 +532,10 @@
       // Listen to sequence changes to update start selects dynamically
       document.getElementById('input-dept-sequence').addEventListener('input', updateStartSelects);
       document.getElementById('input-ward-sequence').addEventListener('input', updateStartSelects);
+      // Draw each section the phone holds a copy of at once, before LINE sign-in finishes.
+      [['/api/line-groups', loadLineGroups], ['/api/group-features', loadGroupFeatures], ['/api/doctor-mappings', loadMappings],
+        ['/api/medbase/groups', loadMedbase], ['/api/push-log', loadPushLog], ['/api/users', loadUsers]]
+        .forEach(([url, load]) => { if (window.__hasCopy(url)) load(); });
       try {
         const resConfig = await fetch('/api/config');
         const config = await resConfig.json();
@@ -568,8 +572,15 @@
     }
 
     // A copy kept on the phone was drawn first; redraw when the server's answer differs (js/api.js).
+    // The rotation form is only redrawn while nobody has typed into it.
+    let rotationEdited = false;
+    document.addEventListener('input', e => { if (e.target.closest && e.target.closest('#input-doctors-list, #input-nps-list, #input-dept-sequence, #input-ward-sequence')) rotationEdited = true; });
     window.addEventListener('api:updated', e => {
-      const reload = { '/api/line-groups': loadLineGroups, '/api/group-features': loadGroupFeatures, '/api/doctor-mappings': loadMappings, '/api/medbase/groups': loadMedbase }[e.detail.path];
+      const reload = {
+        '/api/line-groups': loadLineGroups, '/api/group-features': loadGroupFeatures, '/api/doctor-mappings': loadMappings,
+        '/api/medbase/groups': loadMedbase, '/api/push-log': loadPushLog, '/api/users': loadUsers,
+        '/api/rotations': () => { if (!rotationEdited) loadRotations(); }
+      }[e.detail.path];
       if (reload) reload();
     });
 

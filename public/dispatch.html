@@ -183,6 +183,12 @@
     // Initialize LIFF
     async function initLiff() {
       parseQueryParams();
+      // Draw the copy kept on the phone at once, before LINE sign-in finishes.
+      const linkMsgId = window.__linkParam('msgId');
+      if (linkMsgId && window.__hasCopy('/api/doctor-mappings') && window.__hasCopy(`/api/dispatch-cache?msgId=${linkMsgId}`)) {
+        liffParams.msgId = linkMsgId;
+        loadDoctorMappings();
+      }
       
       try {
         const resConfig = await fetch('/api/config');
@@ -210,6 +216,14 @@
         await loadDoctorMappings();
       }
     }
+
+    // A copy kept on the phone was drawn first; redraw when the server's answer differs (js/api.js),
+    // unless someone already changed a switch.
+    let dispatchTouched = false;
+    document.addEventListener('change', e => { if (e.target.classList && e.target.classList.contains('doctor-checkbox')) dispatchTouched = true; });
+    window.addEventListener('api:updated', e => {
+      if (!dispatchTouched && (e.detail.path === '/api/doctor-mappings' || e.detail.path === '/api/dispatch-cache')) loadDoctorMappings();
+    });
 
     // Fetch ALL mappings and active cache state
     async function loadDoctorMappings() {

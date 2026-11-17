@@ -275,6 +275,8 @@
     }
 
     async function initLiff() {
+      // Draw the copy kept on the phone at once, before LINE sign-in finishes.
+      if (!new URLSearchParams(location.search).get('edit') && window.__hasCopy('/api/travels')) fetchTrips();
       try {
         const config = await (await fetch('/api/config')).json();
         await liff.init({ liffId: config.LIFF_TRAVEL_ID || config.LIFF_CALENDAR_ID });
@@ -290,11 +292,12 @@
           }
           document.getElementById('user-badge').style.display = 'flex';
 
-          await fetch('/api/users/sync', {
+          // Background: the page does not wait for the user list to be updated.
+          fetch('/api/users/sync', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ lineUserId: profile.userId, displayName: userName })
-          });
+          }).catch(() => {});
         }
       } catch (err) {
         console.error('LIFF initialization failed', err);

@@ -127,33 +127,28 @@ app.get('/progress-api/:id', (c) => {
 // ----------------------------------------------------
 // Pretty URL Router Redirects for LIFF Apps
 // ----------------------------------------------------
-app.get('/liff/notes', (c) => {
-  const query = c.req.url.includes('?') ? c.req.url.substring(c.req.url.indexOf('?')) : '';
-  return c.redirect('/notes.html' + query);
-});
+// The page address carries a version that changes on every restart, so a phone
+// that kept an older page in its browser cache loads the current one at once.
+const PAGE_VERSION = Date.now().toString(36);
+function pageUrl(page, c) {
+  const url = new URL(c.req.url);
+  return `/${page}.html?v=${PAGE_VERSION}${url.search ? '&' + url.search.slice(1) : ''}`;
+}
 
-app.get('/liff/dispatch', (c) => {
-  const query = c.req.url.includes('?') ? c.req.url.substring(c.req.url.indexOf('?')) : '';
-  return c.redirect('/dispatch.html' + query);
-});
+app.get('/liff/notes', (c) => c.redirect(pageUrl('notes', c)));
 
-app.get('/liff/admin', (c) => {
-  const query = c.req.url.includes('?') ? c.req.url.substring(c.req.url.indexOf('?')) : '';
-  return c.redirect('/admin.html' + query);
-});
+app.get('/liff/dispatch', (c) => c.redirect(pageUrl('dispatch', c)));
+
+app.get('/liff/admin', (c) => c.redirect(pageUrl('admin', c)));
 
 // Without its own LIFF app, the travel page rides on the calendar one: the menu
 // opens it with ?page=travel, which LIFF may first hand over inside liff.state.
 app.get('/liff/calendar', (c) => {
-  const query = c.req.url.includes('?') ? c.req.url.substring(c.req.url.indexOf('?')) : '';
   const wantsTravel = c.req.query('page') === 'travel' || (c.req.query('liff.state') || '').includes('page=travel');
-  return c.redirect((wantsTravel ? '/travel.html' : '/calendar.html') + query);
+  return c.redirect(pageUrl(wantsTravel ? 'travel' : 'calendar', c));
 });
 
-app.get('/liff/travel', (c) => {
-  const query = c.req.url.includes('?') ? c.req.url.substring(c.req.url.indexOf('?')) : '';
-  return c.redirect('/travel.html' + query);
-});
+app.get('/liff/travel', (c) => c.redirect(pageUrl('travel', c)));
 
 // ----------------------------------------------------
 // LINE Webhook Handler
@@ -834,6 +829,12 @@ app.get('/images/:file', (c) => {
 });
 app.get('/api/images/:id', (c) => sendImage(c, c.req.param('id')));
 
+// Pages and scripts are re-checked on every open (a cheap 304 when unchanged), so a
+// phone never runs a new page against an old copy of js/api.js.
+app.use('/*', async (c, next) => {
+  await next();
+  if (c.res.status === 200 || c.res.status === 304) c.header('Cache-Control', 'no-cache');
+});
 app.use('/*', serveStatic({ root: './public' }));
 
 // ----------------------------------------------------

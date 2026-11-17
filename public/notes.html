@@ -311,7 +311,7 @@
 
   <!-- LINE LIFF SDK -->
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-  <script src="/js/api.js"></script>
+  <script src="/js/api.js?v=3"></script>
   <script>
     let userName = '未知同仁';
     let userAvatarUrl = '';
@@ -319,6 +319,10 @@
     let allNotes = []; // Stores all fetched notes locally to perform client-side filtering
     let currentFilter = 'ALL';
     let expandedNoteIds = new Set();
+    let notesLiffId = null;
+    // A shared link (?note=<id>) opens that notice expanded and scrolled into view, once.
+    let linkedNoteId = window.__linkParam('note');
+    if (linkedNoteId) expandedNoteIds.add(linkedNoteId);
 
     // Category list persistence in localStorage
     const defaultCategories = ['會診', '藥物', '手術', '檢查', '其他'];
@@ -559,6 +563,7 @@
         const resConfig = await fetch('/api/config');
         const config = await resConfig.json();
 
+        notesLiffId = config.LIFF_NOTES_ID;
         await liff.init({ liffId: config.LIFF_NOTES_ID });
 
         if (liff.isLoggedIn()) window.__setIdToken(liff.getIDToken());
@@ -593,7 +598,7 @@
         await fetchNotesList();
       } catch (err) {
         console.error('LIFF initialization failed', err);
-        document.getElementById('meta-info').innerText = '連線失敗，建議於 LINE 內打開。';
+        document.getElementById('meta-info').innerText = `連線失敗，建議於 LINE 內打開。（${(err && err.message) || err}）`;
         await fetchNotesList();
       }
     }
@@ -770,6 +775,14 @@
       container.innerHTML = '';
       filtered.forEach(note => container.insertAdjacentHTML('beforeend', noteCardHtml(note)));
       document.getElementById('meta-info').innerText = `已顯示 ${filtered.length} 筆公告項目`;
+
+      const linked = linkedNoteId && document.getElementById(`note-card-${linkedNoteId}`);
+      if (linked) {
+        linkedNoteId = null;
+        const panel = linked.closest('details');
+        if (panel) panel.open = true;
+        linked.scrollIntoView({ block: 'center' });
+      }
     }
 
     function renderExpiredNotes(expired) {
@@ -811,6 +824,7 @@
               </div>
             </div>
             <div class="note-card-actions">
+              <button class="action-btn" onclick="event.stopPropagation(); shareNote('${note.id}')" title="分享到群組" aria-label="分享到群組">📤</button>
               <button class="action-btn" onclick="event.stopPropagation(); openEditModal('${note.id}')" title="編輯">✏️</button>
               <button class="action-btn delete-btn" onclick="event.stopPropagation(); deleteNote('${note.id}')" title="刪除">🗑️</button>
             </div>
@@ -818,6 +832,30 @@
         `;
         return cardHtml;
       }
+    }
+
+    // Shares a link to a notice as a message the user sends from their own LINE account,
+    // so it never counts against the bot's monthly push quota. Uses LINE's share picker
+    // inside LIFF; where that is off, falls back to LINE's share link.
+    async function shareNote(id) {
+      const note = allNotes.find(n => String(n.id) === String(id));
+      if (!note) return;
+      const link = notesLiffId
+        ? `https://liff.line.me/${notesLiffId}?note=${encodeURIComponent(note.id)}`
+        : `${location.origin}/liff/notes?note=${encodeURIComponent(note.id)}`;
+      const text = `📋【${note.category || '其他'}】${note.title}\n${link}`;
+      try {
+        if (window.liff && liff.isLoggedIn() && liff.isApiAvailable('shareTargetPicker')) {
+          const result = await liff.shareTargetPicker([{ type: 'text', text }]);
+          if (result) showToast('已分享公告');
+          return;
+        }
+      } catch (error) {
+        console.warn('shareTargetPicker failed, using the share link instead', error);
+      }
+      const shareUrl = 'https://line.me/R/share?text=' + encodeURIComponent(text);
+      if (window.liff && liff.isInClient && liff.isInClient()) liff.openWindow({ url: shareUrl, external: false });
+      else window.location.href = shareUrl;
     }
 
     function toggleNote(id) {

@@ -314,6 +314,9 @@
     }
 
     // Fetch Events List
+    // A copy kept on the phone was drawn first; redraw when the server's answer differs (js/api.js).
+    window.addEventListener('api:updated', e => { if (e.detail.path === '/api/events') fetchEventsList(); });
+
     async function fetchEventsList() {
       try {
         if (!groupId) { await chooseCalendarGroup(); return; }

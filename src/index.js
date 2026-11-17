@@ -857,5 +857,7 @@ serve(
     console.log('=================================================');
 
     initializeScheduler();
+    // Fetch the MedBase roster now, so the first admin page load does not wait for it.
+    void getCachedRoster();
   }
 );

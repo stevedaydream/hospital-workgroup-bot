@@ -56,17 +56,40 @@ export async function getAttendingRoster() {
 // The roster changes rarely; pages that only label departments read it at most hourly.
 const ROSTER_CACHE_MS = 60 * 60 * 1000;
 let rosterCache = { at: 0, roster: null };
+let rosterLoading = null;
 
-/** The attending roster for labels, or null if MedBase is off or unreachable. */
+function reloadRoster() {
+  rosterLoading ??= getAttendingRoster()
+    .then(roster => { rosterCache = { at: Date.now(), roster }; })
+    .catch(error => console.error('[MedBase] roster for department labels:', error.message))
+    .finally(() => { rosterLoading = null; });
+  return rosterLoading;
+}
+
+/**
+ * The attending roster for labels, or null if MedBase is off or unreachable.
+ * Only the very first call waits for MedBase; after that an expired copy is
+ * returned at once and refreshed in the background, so pages never wait on it.
+ */
 export async function getCachedRoster() {
   if (!medbaseEnabled) return null;
-  if (rosterCache.roster && Date.now() - rosterCache.at < ROSTER_CACHE_MS) return rosterCache.roster;
-  try {
-    rosterCache = { at: Date.now(), roster: await getAttendingRoster() };
-  } catch (error) {
-    console.error('[MedBase] roster for department labels:', error.message);
+  if (!rosterCache.roster) {
+    await reloadRoster();
+  } else if (Date.now() - rosterCache.at >= ROSTER_CACHE_MS) {
+    void reloadRoster();
   }
   return rosterCache.roster;
+}
+
+/**
+ * NP names MedBase knows for `date`: everyone on the NP schedule that day
+ * (off duty included) plus the NP duty roster. [] if MedBase is off or fails.
+ */
+export async function getNpNames(date) {
+  if (!medbaseEnabled) return [];
+  const [day, duty] = await Promise.allSettled([callMedbase('day', { date }), callMedbase('duty', { date })]);
+  for (const r of [day, duty]) if (r.status === 'rejected') console.error('[MedBase] NP names:', r.reason?.message);
+  return [day, duty].flatMap(r => (r.status === 'fulfilled' ? r.value.items || [] : []).map(i => i.name));
 }
 
 // ----------------------------------------------------

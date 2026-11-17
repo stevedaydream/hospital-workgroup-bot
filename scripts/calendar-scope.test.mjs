@@ -6,7 +6,7 @@ import vm from 'node:vm';
 const html = fs.readFileSync(new URL('../public/calendar.html', import.meta.url), 'utf8');
 function calendar(search, context = {}) {
   const script = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].at(-1)[1];
-  const sandbox = { URLSearchParams, console, window: { location: { search } }, liff: { getContext: () => context }, document: { addEventListener() {} } };
+  const sandbox = { URLSearchParams, console, window: { location: { search }, addEventListener() {} }, liff: { getContext: () => context }, document: { addEventListener() {} } };
   vm.createContext(sandbox);
   vm.runInContext(script, sandbox);
   vm.runInContext('parseGroupId()', sandbox);

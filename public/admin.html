@@ -554,25 +554,24 @@
           console.warn("LINE LIFF not logged in. Standalone browser mode.");
         }
         
-        await loadLineGroups();
-        await loadGroupFeatures();
-        await loadMappings();
-        await loadMedbase();
-        await loadPushLog();
-        await loadUsers();
-        await loadRotations();
+        await loadAll();
       } catch (err) {
         console.error('LIFF initialization failed', err);
         document.getElementById('meta-info').innerText = '管理端連線正常';
-        await loadLineGroups();
-        await loadGroupFeatures();
-        await loadMappings();
-        await loadMedbase();
-        await loadPushLog();
-        await loadUsers();
-        await loadRotations();
+        await loadAll();
       }
     }
+
+    // Every section at once; each one draws itself as soon as its own data arrives.
+    function loadAll() {
+      return Promise.all([loadLineGroups(), loadGroupFeatures(), loadMappings(), loadMedbase(), loadPushLog(), loadUsers(), loadRotations()]);
+    }
+
+    // A copy kept on the phone was drawn first; redraw when the server's answer differs (js/api.js).
+    window.addEventListener('api:updated', e => {
+      const reload = { '/api/line-groups': loadLineGroups, '/api/group-features': loadGroupFeatures, '/api/doctor-mappings': loadMappings, '/api/medbase/groups': loadMedbase }[e.detail.path];
+      if (reload) reload();
+    });
 
     // Load Mappings
     async function loadMappings() {

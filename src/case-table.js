@@ -67,6 +67,23 @@ export function normalizeAssignments(raw) {
   })).filter(row => row.np || row.doctors.length);
 }
 
+/**
+ * OCR sometimes misreads one character of an NP's name (霙 read as 霖).
+ * Swap each NP name for the MedBase name that differs from it in exactly one
+ * character, when exactly one such name exists. Names already on the list,
+ * and names with no single close match, are left as they are.
+ */
+export function correctNpNames(assignments, knownNames) {
+  const names = [...new Set((knownNames || []).map(n => String(n).trim()).filter(Boolean))];
+  if (!names.length) return assignments;
+  const fix = np => {
+    if (!np || names.includes(np)) return np;
+    const close = names.filter(n => n.length === np.length && [...n].filter((c, i) => c !== np[i]).length === 1);
+    return close.length === 1 ? close[0] : np;
+  };
+  return assignments.map(row => ({ ...row, np: fix(row.np) }));
+}
+
 const same = (a, b) => a.replace(/\s/g, '').toUpperCase() === b.replace(/\s/g, '').toUpperCase();
 
 /**

@@ -6,14 +6,14 @@ import { db } from './db.js';
 import { offerImage, chooseImage, cancelImages } from './image-choice.js';
 import { analyzeCaseImage, analyzeMultipleImages, modelLabel, isModelLoaded } from './ai.js';
 import { createJob, updateJob, trackModelStage } from './progress.js';
-import { medbaseCommand, medbaseEnabled, MEDBASE_APP_URL, selfPayCommand } from './medbase.js';
+import { medbaseCommand, medbaseEnabled, MEDBASE_APP_URL, selfPayCommand, getNpNames } from './medbase.js';
 import { selfPayPage } from './self-pay.js';
 import { parseLeaveMessage } from './leave-message.js';
 import { allAnnouncement } from './all-announcement.js';
 import { collectShared, handleSharedCommand, handleSharedPostback, SHARED_COMMANDS } from './shared-announcement.js';
 import { prepareLeaveAlias, leaveAliasPostback, leaveRegistrationReply } from './leave-alias.js';
 import { todayInTaipei, dayOfWeek, nextDispatchDate, dispatchMorningLabel } from './util/date.js';
-import { resolveTableDate, normalizeAssignments, pushSlotPassed } from './case-table.js';
+import { resolveTableDate, normalizeAssignments, correctNpNames, pushSlotPassed } from './case-table.js';
 import { featureEnabled, disabledFeatureMessage as disabledMessage } from './features.js';
 import { IMAGES_DIR } from './images.js';
 import { CASE_PULL_COMMAND, casePullReply } from './case-pull.js';
@@ -871,7 +871,7 @@ async function triggerBatchProcess(sourceId, sessionKey) {
       // --- 🔴 CASE_TABLE Pipeline: Schedule case dispatch ---
       // The date printed on the table decides which day it is for; upload time only as a fallback.
       const { date: tableDate, warning: dateWarning } = resolveTableDate(ocrResult.date);
-      const assignments = normalizeAssignments(ocrResult.assignments);
+      const assignments = correctNpNames(normalizeAssignments(ocrResult.assignments), await getNpNames(tableDate));
       db.case_tables.save(messageId, tableDate, assignments);
       const pushPassed = pushSlotPassed(tableDate);
 

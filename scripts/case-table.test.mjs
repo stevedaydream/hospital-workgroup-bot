@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-const { normalizeTableDate, resolveTableDate, pushSlotPassed, caseWindowDate, normalizeAssignments } = await import('../src/case-table.js');
+const { normalizeTableDate, resolveTableDate, pushSlotPassed, caseWindowDate, normalizeAssignments, correctNpNames } = await import('../src/case-table.js');
 
 const at = (date, time) => new Date(`${date}T${time}:00+08:00`);
 
@@ -42,4 +42,18 @@ test('NP rows from the AI are cleaned', () => {
     { np: '', doctors: [] },
     'junk'
   ]), [{ ward: '9B', np: '林小美', tel: '60001', shift: '', doctors: [{ name: '王小明', cases: 5 }, { name: '張阿德', cases: null }] }]);
+});
+
+test('an NP name misread by one character is replaced by the MedBase name', () => {
+  const rows = [{ ward: '9B', np: '林小霖', tel: '60001', shift: '', doctors: [] }, { ward: '9A', np: '陳小芳', tel: '60002', shift: '白八', doctors: [] }];
+  const fixed = correctNpNames(rows, ['林小霙', '陳小芳', '王小明']);
+  assert.equal(fixed[0].np, '林小霙');
+  assert.equal(fixed[1].np, '陳小芳');
+});
+
+test('NP names are left alone without a single close MedBase match', () => {
+  const rows = [{ ward: '9B', np: '林小霖', tel: '', shift: '', doctors: [] }];
+  assert.equal(correctNpNames(rows, ['林小霙', '林小霞'])[0].np, '林小霖'); // two candidates
+  assert.equal(correctNpNames(rows, ['張阿德'])[0].np, '林小霖');            // none close
+  assert.equal(correctNpNames(rows, [])[0].np, '林小霖');                    // MedBase unavailable
 });

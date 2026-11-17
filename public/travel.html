@@ -309,6 +309,9 @@
       if (editId && trips.some(t => t.id === editId)) openModal(editId);
     }
 
+    // A copy kept on the phone was drawn first; redraw when the server's answer differs (js/api.js).
+    window.addEventListener('api:updated', e => { if (e.detail.path === '/api/travels') fetchTrips(); });
+
     async function fetchTrips() {
       try {
         const response = await fetch(`/api/travels${showPast ? '?past=1' : ''}`);

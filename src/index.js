@@ -358,7 +358,10 @@ app.get('/api/doctor-mappings', async (c) => {
 app.get('/api/doctor-mappings/medbase-roster', async (c) => {
   if (!medbaseEnabled) return c.json({ error: '尚未設定 MedBase 串接' }, 503);
   try {
-    return c.json({ doctors: await getAttendingRoster(), source: 'MedBase 通訊錄' });
+    // The copy kept since startup answers at once (MedBase can take over 10 s);
+    // only when there is none yet does the page wait for MedBase and see its error.
+    const doctors = (await getCachedRoster()) || await getAttendingRoster();
+    return c.json({ doctors, source: 'MedBase 通訊錄' });
   } catch (error) {
     return c.json({ error: error.message }, 502);
   }

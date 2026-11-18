@@ -32,14 +32,21 @@
     .tabs-header {
       display: flex;
       gap: 4px;
+      overflow-x: auto;
+      scrollbar-width: none;
+      position: sticky;
+      top: 0;
+      z-index: 5;
       margin-bottom: 20px;
       background: var(--surface-sunken);
       border: 1px solid var(--line);
       padding: 4px;
       border-radius: 12px;
     }
+    .tabs-header::-webkit-scrollbar { display: none; }
     .tabs-header .filter-btn {
-      flex: 1;
+      flex: 1 0 auto;
+      white-space: nowrap;
       border: none;
       background: transparent;
       border-radius: 9px;
@@ -240,16 +247,21 @@
       <div class="meta-info" id="meta-info">載入中...</div>
     </div>
 
-    <!-- Tabs Header -->
-    <div class="tabs-header">
-      <button class="filter-btn active" id="tab-mappings-btn" onclick="switchTab('mappings')">科別對照對應表</button>
-      <button class="filter-btn" id="tab-rotations-btn" onclick="switchTab('rotations')">晨會報告輪序</button>
+    <!-- Tabs Header: one tab per area; scrolls sideways on a phone -->
+    <div class="tabs-header" role="tablist" aria-label="後台分頁">
+      <button class="filter-btn active" role="tab" data-tab="mappings" onclick="switchTab('mappings')">科別對照</button>
+      <button class="filter-btn" role="tab" data-tab="roster" onclick="switchTab('roster')">醫師名單</button>
+      <button class="filter-btn" role="tab" data-tab="groups" onclick="switchTab('groups')">群組</button>
+      <button class="filter-btn" role="tab" data-tab="medbase" onclick="switchTab('medbase')">MedBase</button>
+      <button class="filter-btn" role="tab" data-tab="push" onclick="switchTab('push')">推播用量</button>
+      <button class="filter-btn" role="tab" data-tab="users" onclick="switchTab('users')">同仁</button>
+      <button class="filter-btn" role="tab" data-tab="rotations" onclick="switchTab('rotations')">晨會輪序</button>
     </div>
 
     <!-- Mappings Tab Content -->
     <div id="tab-mappings" class="tab-content">
       <!-- Section: Existing Mappings -->
-      <div class="admin-section">
+      <div class="admin-section" data-tab="mappings">
         <div class="section-title">
           <span>📋</span> 現有對照對應表 (Doctor-Group Mappings)
         </div>
@@ -261,7 +273,7 @@
       </div>
 
       <!-- Section: Import doctors from a roster photo -->
-      <div class="admin-section">
+      <div class="admin-section" data-tab="roster">
         <div class="section-title">
           <span>📋</span> 從醫師名單建立群組對照
         </div>
@@ -305,7 +317,7 @@
       </div>
 
       <!-- Section: groups the bot has joined -->
-      <div class="admin-section">
+      <div class="admin-section" data-tab="groups">
         <div class="section-title">
           <span>🤖</span> Bot 已加入的群組
         </div>
@@ -316,7 +328,7 @@
       </div>
 
       <!-- Section: feature switches per group -->
-      <div class="admin-section">
+      <div class="admin-section" data-tab="groups">
         <div class="section-title">
           <span>🎛️</span> 群組功能開關
         </div>
@@ -330,7 +342,7 @@
       </div>
 
       <!-- Section: MedBase integration -->
-      <div class="admin-section">
+      <div class="admin-section" data-tab="medbase">
         <div class="section-title">
           <span>🔗</span> MedBase 串接
         </div>
@@ -350,7 +362,7 @@
       </div>
 
       <!-- Section: Push usage -->
-      <div class="admin-section">
+      <div class="admin-section" data-tab="push">
         <div class="section-title">
           <span>📨</span> 推播用量
         </div>
@@ -368,7 +380,7 @@
       </div>
 
       <!-- Section: Add New Mapping Form -->
-      <div class="admin-section">
+      <div class="admin-section" data-tab="mappings">
         <div class="section-title">
           <span>＋</span> 新增對照設定項目
         </div>
@@ -404,7 +416,7 @@
       </div>
 
       <!-- Section: Registered Users -->
-      <div class="admin-section">
+      <div class="admin-section" data-tab="users">
         <div class="section-title">
           <span>👤</span> 已開通 LINE LIFF 授權同仁清單
         </div>
@@ -740,8 +752,9 @@
         const mappings = await mappingsResponse.json();
         if (!Array.isArray(mappings)) throw new Error('既有群組對照格式錯誤，請稍後重試');
         currentMappings = mappings;
-        const result = await response.json();
-        if (!response.ok) throw new Error(result.error || `HTTP ${response.status}`);
+        // A failed hop through the relay answers in plain text, not JSON.
+        const result = await response.json().catch(() => ({ error: '暫時連不上伺服器，請稍後再按一次' }));
+        if (!response.ok || result.error) throw new Error(result.error || `HTTP ${response.status}`);
         if (!Array.isArray(result.doctors)) throw new Error('名單格式錯誤，請稍後重試');
         showRosterReview(result.doctors);
         setRosterStatus(result.doctors.length
@@ -1293,25 +1306,28 @@
     }
 
     // Tab control
-    function switchTab(tabName) {
-      const tabMappings = document.getElementById('tab-mappings');
-      const tabRotations = document.getElementById('tab-rotations');
-      const btnMappings = document.getElementById('tab-mappings-btn');
-      const btnRotations = document.getElementById('tab-rotations-btn');
-      
-      if (tabName === 'mappings') {
-        tabMappings.style.display = 'block';
-        tabRotations.style.display = 'none';
-        btnMappings.classList.add('active');
-        btnRotations.classList.remove('active');
-      } else {
-        tabMappings.style.display = 'none';
-        tabRotations.style.display = 'block';
-        btnMappings.classList.remove('active');
-        btnRotations.classList.add('active');
-        loadRotations(); // Sync configuration fields
-      }
+    // Shows one area at a time. The last tab opened is remembered on this phone.
+    function switchTab(tabName, { atStart = false } = {}) {
+      const buttons = [...document.querySelectorAll('.tabs-header [data-tab]')];
+      if (!buttons.some(b => b.dataset.tab === tabName)) tabName = 'mappings';
+      buttons.forEach(b => {
+        const on = b.dataset.tab === tabName;
+        b.classList.toggle('active', on);
+        b.setAttribute('aria-selected', on);
+        if (on) b.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      });
+      const rotations = tabName === 'rotations';
+      document.getElementById('tab-mappings').style.display = rotations ? 'none' : 'block';
+      document.getElementById('tab-rotations').style.display = rotations ? 'block' : 'none';
+      document.querySelectorAll('#tab-mappings > .admin-section').forEach(section => {
+        section.hidden = section.dataset.tab !== tabName;
+      });
+      try { localStorage.setItem('admin:tab', tabName); } catch { /* blocked */ }
+      if (rotations && !atStart) loadRotations(); // Sync configuration fields (loadAll does it at start)
     }
+    let savedTab = 'mappings';
+    try { savedTab = localStorage.getItem('admin:tab') || savedTab; } catch { /* blocked */ }
+    switchTab(savedTab, { atStart: true });
 
     let exclusionDates = [];
     let flatpickrInstance = null;

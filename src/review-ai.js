@@ -8,7 +8,7 @@ export function reviewAiStatus(id) {
   const job = jobs.get(String(id));
   return job ? { status: job.status, error: job.error, model: job.model, stage: job.stage } : { status: 'idle' };
 }
-export function startReviewAi(id, organize = organizeNotice, { model = 'qwen3.6', switchModel = false, prepare = prepareReviewModel } = {}) {
+export function startReviewAi(id, organize = organizeNotice, { model = 'qwen3.6-official', switchModel = false, prepare = prepareReviewModel } = {}) {
   if (!Object.hasOwn(REVIEW_MODELS, model)) throw new Error('不支援的模型');
   id = String(id);
   const note = db.note_reviews.list().find(row => String(row.id) === id);
@@ -46,7 +46,7 @@ export function draftAiStatus(id) {
   if (!job) return { status: 'missing' };
   return { status: job.status, error: job.error, model: job.model, stage: job.stage, draft: job.draft };
 }
-export function startDraftAi(note, categories, organize = organizeNoteDraft, { model = 'qwen3.6', prepare = prepareReviewModel } = {}) {
+export function startDraftAi(note, categories, organize = organizeNoteDraft, { model = 'qwen3.6-official', prepare = prepareReviewModel } = {}) {
   if (!Object.hasOwn(REVIEW_MODELS, model)) throw new Error('不支援的模型');
   if ([...jobs.values(), ...drafts.values()].some(job => job.status === 'running')) throw new Error('另一則公告正在整理，請待完成後再試。');
   const id = randomUUID();

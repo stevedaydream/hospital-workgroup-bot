@@ -259,7 +259,7 @@
           <button class="btn-ai" id="btn-ai-organize" onclick="organizeDraft()">✨ AI 整理</button>
           <label class="visually-hidden" for="ai-model">整理模型</label>
           <select id="ai-model" class="ai-model">
-            <option value="qwen3.6">Qwen3.6</option><option value="local">Strata</option>
+            <option value="qwen3.6-official">Qwen3.6 官方版</option><option value="qwen3.6">Qwen3.6 Uncensored</option><option value="local">Strata</option>
           </select>
         </div>
         <p class="ai-status" id="ai-status" role="status">排版內容，並填入標題與分類；整理後請核對藥名、劑量、時間，按「確認儲存」才會存檔。</p>
@@ -313,6 +313,7 @@
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <script src="/js/api.js?v=3"></script>
   <script>
+    const AI_MODEL_NAMES = { 'qwen3.6-official': 'Qwen3.6 官方版', 'qwen3.6': 'Qwen3.6 Uncensored', local: 'Strata' };
     let userName = '未知同仁';
     let userAvatarUrl = '';
     let currentEditId = null;
@@ -518,7 +519,7 @@
       const run = ++aiRun;
       const button = document.getElementById('btn-ai-organize');
       const model = document.getElementById('ai-model').value;
-      const modelName = model === 'local' ? 'Strata' : 'Qwen3.6';
+      const modelName = AI_MODEL_NAMES[model] || model;
       button.disabled = true;
       status.textContent = '準備模型中，可能需要一兩分鐘…';
       try {
@@ -649,7 +650,7 @@
             <p class="review-ai-status" role="status"></p>
             <label for="review-model-${item.id}">整理模型</label>
             <select id="review-model-${item.id}" style="min-height:44px; margin:8px; padding:8px; font:inherit;">
-              <option value="qwen3.6">Qwen3.6</option><option value="local">Strata</option>
+              <option value="qwen3.6-official">Qwen3.6 官方版</option><option value="qwen3.6">Qwen3.6 Uncensored</option><option value="local">Strata</option>
             </select>
             <div class="review-actions">
               <button class="btn-secondary" onclick="organizeReview(${item.id}, this)">${item.draft_content ? '重新 AI 整理' : 'AI 整理'}</button>
@@ -699,7 +700,7 @@
           if (!response.ok) throw new Error('查詢失敗，請重新開啟目錄；原文仍保留。');
           const result = await response.json();
           if (result.status === 'running') {
-            status.textContent = result.stage === 'preparing' ? '正在停止原模型並等待釋放；若有其他工作則會停止切換。' : `正在使用 ${result.model === 'local' ? 'Strata' : 'Qwen3.6'} 整理。若逾時，可選另一個模型後按「切換並重試」。`;
+            status.textContent = result.stage === 'preparing' ? '正在停止原模型並等待釋放；若有其他工作則會停止切換。' : `正在使用 ${AI_MODEL_NAMES[result.model] || result.model} 整理。若逾時，可選另一個模型後按「切換並重試」。`;
             continue;
           }
           if (result.status !== 'done') throw new Error(result.error || '整理已中斷，可重新整理；原文仍保留。');

@@ -53,3 +53,4 @@
 - **P4（新增，待排）**：Rich Menu 與 LIFF 介面改版。
 
 - **辨識改用 Qwen3.6（2026-11-02）**：預設與正式環境 `LOCAL_AI_MODELS=qwen3.6`，直接由 Port Monitor 啟動 Qwen3.6，避免先等待 Strata 載入或失敗。Gateway 與既有 Gemini 備援規則維持。
+- **辨識先用 Qwen3.6 官方版（2026-11-19）**：預設與正式環境 `LOCAL_AI_MODELS=qwen3.6-official,qwen3.6`。先由 Port Monitor 啟動官方 Unsloth UD-Q4_K_M（`qwen36-official`），失敗再用 Uncensored 版（`qwen36`），兩者都失敗才送 Gemini。照片不送其他雲端服務。公告整理預設也改為官方版，可在頁面選 Uncensored 或 Strata。

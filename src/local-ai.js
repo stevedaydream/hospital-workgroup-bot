@@ -4,7 +4,8 @@ import { SINGLE_IMAGE_PROMPT, MULTI_IMAGE_PROMPT, ROSTER_PROMPT, normalizeSingle
 dotenv.config();
 
 // Local models on this PC, tried in the order of LOCAL_AI_MODELS.
-// Default to Qwen3.6 directly to avoid waiting for a Strata cold start.
+// Default: official Qwen3.6 first, then the uncensored Qwen3.6 build; Gemini
+// (ai.js) only when neither answers.
 //
 // Two routes, same OpenAI-compatible API:
 // 1. Port Monitor (43922, needs a project key). It starts a model that is not
@@ -13,7 +14,7 @@ dotenv.config();
 // 2. Local AI Gateway (4000). Its providers do not autostart, so it only
 //    serves whichever model is already running. Used when Port Monitor is not
 //    configured, not running, or could not serve any model.
-const LOCAL_AI_MODELS = (process.env.LOCAL_AI_MODELS || 'qwen3.6')
+const LOCAL_AI_MODELS = (process.env.LOCAL_AI_MODELS || 'qwen3.6-official,qwen3.6')
   .split(',').map(m => m.trim()).filter(Boolean);
 
 const routes = [];
@@ -42,7 +43,7 @@ if (localAiEnabled) {
   console.log(`AI Engine: Local AI via ${routes.map(r => `${r.name} (${r.baseUrl})`).join(' → ')}, models in order: ${LOCAL_AI_MODELS.join(' → ')}`);
 }
 
-const MODEL_LABELS = { local: 'Strata', 'qwen3.6': 'Qwen3.6' };
+const MODEL_LABELS = { local: 'Strata', 'qwen3.6-official': 'Qwen3.6 官方版', 'qwen3.6': 'Qwen3.6 Uncensored' };
 export const modelLabel = model => MODEL_LABELS[model] || model;
 
 // fetch() rejects with a TypeError only when no HTTP response came back at all.

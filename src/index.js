@@ -233,7 +233,7 @@ app.get('/api/users', async (c) => {
 // Fetch all ward notes (Directory List)
 app.get('/api/note-reviews', c => c.json(db.note_reviews.list()));
 app.post('/api/note-reviews/:id/organize', async c => {
-  const { model = 'qwen3.6', switchModel = false } = await c.req.json().catch(() => ({}));
+  const { model = 'qwen3.6-official', switchModel = false } = await c.req.json().catch(() => ({}));
   let result;
   try { result = startReviewAi(c.req.param('id'), undefined, { model, switchModel: switchModel === true }); }
   catch (error) { return c.json({ error: error.message }, 409); }
@@ -250,7 +250,7 @@ app.post('/api/note-reviews/:id/resolve', async c => {
 
 // AI draft for the notes editor: title, category and tidied content to review before saving.
 app.post('/api/notes/organize', async c => {
-  const { title = '', content = '', categories = [], model = 'qwen3.6' } = await c.req.json().catch(() => ({}));
+  const { title = '', content = '', categories = [], model = 'qwen3.6-official' } = await c.req.json().catch(() => ({}));
   if (typeof content !== 'string' || !content.trim()) return c.json({ error: '請先輸入公告內容' }, 400);
   if (content.length > 8000) return c.json({ error: '內容超過 8000 字，請分成多則公告' }, 400);
   const list = (Array.isArray(categories) ? categories : []).filter(x => typeof x === 'string' && x.trim()).map(x => x.trim().slice(0, 20)).slice(0, 30);

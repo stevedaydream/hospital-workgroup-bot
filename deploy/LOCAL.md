@@ -19,7 +19,7 @@ LINE 平台 ──HTTPS──▶ Vercel 中繼 (relay-xi-pied.vercel.app，東�
 ```
 
 - Bot 只聽 `127.0.0.1`（`HOST` 可改），對外一律經 Funnel，不暴露在區網。
-- 模型依 `LOCAL_AI_MODELS` 的順序嘗試，預設 `local,qwen3.6`。Strata 與 Qwen3.6 共用顯示卡，不會同時執行。
+- 模型依 `LOCAL_AI_MODELS` 的順序嘗試，預設 `qwen3.6-official,qwen3.6`（官方版 → Uncensored）。各模型共用顯示卡，不會同時執行。
 - **Port Monitor 路線**（設了 `PORT_MONITOR_API_KEY`）：模型沒載入時，Port Monitor 依專案優先順序排隊，必要時關閉閒置的模型再啟動它。Strata 放不下時 Port Monitor 立即回失敗，bot 接著要 Qwen3.6，由 Port Monitor 拉起。冷啟動 Strata 約 3 分鐘，逾時預設 600 秒。
 - **Gateway 路線**：Port Monitor 沒開（連不上）、沒設金鑰，或所有模型都失敗時使用。gateway 的模型不會自動啟動，只會用已經在跑的那一個；停機的模型約 2 秒就回 `provider_unavailable`。
 - 本機模型呼叫都不經過 Tailscale。
@@ -34,7 +34,7 @@ Port Monitor 的「顯示卡協調」裡，`strata`（別名含 `local`）與 `q
 |---|---|
 | `BASE_URL` | `https://relay-xi-pied.vercel.app`（Vercel 中繼，見第 2.1 節） |
 | `LOCAL_AI_BASE_URL` | `http://127.0.0.1:4000`（Local AI Gateway） |
-| `LOCAL_AI_MODELS` | `local,qwen3.6`（兩條路線共用；Port Monitor 的模型 id／別名須與此相同） |
+| `LOCAL_AI_MODELS` | `qwen3.6-official,qwen3.6`（兩條路線共用；Port Monitor 的模型 id／別名須與此相同） |
 | `PORT_MONITOR_API_KEY` | Port Monitor 桌面 →「專案金鑰與優先順序」→「新增專案」`hospital-bot`（一般）→「取得金鑰」。**不是**上方 AI Provider 的共用連線設定。留空就不經 Port Monitor |
 | `ADMIN_API_KEY` | 已隨機產生 |
 | `GEMINI_API_KEY` | 留 `placeholder` = **不備援**：本機模型都失敗時群組會收到錯誤訊息，不會產生假資料。要備援就填真的 key。 |

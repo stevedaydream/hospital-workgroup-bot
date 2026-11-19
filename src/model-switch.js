@@ -1,12 +1,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-export const REVIEW_MODELS = { 'qwen3.6': 'qwen36', local: 'strata' };
-const labels = { 'qwen3.6': 'Qwen3.6', local: 'Strata' };
+export const REVIEW_MODELS = { 'qwen3.6-official': 'qwen36-official', 'qwen3.6': 'qwen36', local: 'strata' };
+const labels = { 'qwen3.6-official': 'Qwen3.6 官方版', 'qwen3.6': 'Qwen3.6 Uncensored', local: 'Strata' };
 
 export async function prepareReviewModel(model, { signal, previousModel, request = controlRequest, pause = ms => new Promise(resolve => setTimeout(resolve, ms)) } = {}) {
   if (!Object.hasOwn(REVIEW_MODELS, model)) throw new Error('不支援的模型');
-  const old = REVIEW_MODELS[previousModel] || (model === 'local' ? 'qwen36' : 'strata');
+  // Unknown previous model: photo recognition tries the official build first, so
+  // that is the one most likely loaded.
+  const old = REVIEW_MODELS[previousModel] || (model === 'qwen3.6-official' ? 'qwen36' : 'qwen36-official');
   // Never force: Port Monitor checks direct tasks, managed requests and ownership.
   let stopped = false;
   for (let i = 0; i < 15; i++) {

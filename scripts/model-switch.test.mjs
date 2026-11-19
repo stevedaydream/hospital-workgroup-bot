@@ -7,9 +7,9 @@ test('switch waits for stop acknowledgement and unloaded status without forcing 
   let snapshots=0;
   await prepareReviewModel('local', { pause:async()=>{}, request:async(route,body)=>{
     calls.push({route,body});
-    if(body) {assert.deepEqual(body,{type:'stopModel',id:'qwen36',force:false});return {stopped:true};}
+    if(body) {assert.deepEqual(body,{type:'stopModel',id:'qwen36-official',force:false});return {stopped:true};}
     snapshots++;
-    return {models:{profiles:[{profile:{id:'qwen36'},status:{loaded:snapshots===1,busy:false},managed:{ready:snapshots===1,starting:false,inflight:0}}]}};
+    return {models:{profiles:[{profile:{id:'qwen36-official'},status:{loaded:snapshots===1,busy:false},managed:{ready:snapshots===1,starting:false,inflight:0}}]}};
   }});
   assert.equal(calls[0].route,'/action');
   assert.equal(snapshots,2);

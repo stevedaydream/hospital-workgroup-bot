@@ -46,7 +46,7 @@ test('switch aborts old inference and prevents late old output replacing the new
   const review=db.note_reviews.list()[0];
   let finishOld, oldSignal;
   const organize=async(note,{model,signal})=>{
-    if(model==='qwen3.6'){oldSignal=signal;return new Promise(resolve=>finishOld=resolve);}
+    if(model==='qwen3.6-official'){oldSignal=signal;return new Promise(resolve=>finishOld=resolve);}
     return {title:'Strata 草稿',content:'新模型整理結果'};
   };
   startReviewAi(review.id,organize);

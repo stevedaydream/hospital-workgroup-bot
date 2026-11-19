@@ -1,7 +1,8 @@
 import * as local from './local-ai.js';
 import * as gemini from './gemini.js';
 
-// Provider switch: try the configured local models (Qwen3.6 by default), fall
+// Provider switch: try the configured local models (official Qwen3.6, then the
+// uncensored Qwen3.6 by default), fall
 // back to Gemini when none of them answers. The result carries `provider` so
 // the caller can tell the group when photos were sent to the cloud (decision 8·9).
 

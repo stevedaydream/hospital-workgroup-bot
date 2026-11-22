@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { sqlite } from './db.js';
+import { linksIn, LEAD_MINUTES } from './note-reminders.js';
 
 sqlite.exec(`
   CREATE TABLE IF NOT EXISTS shared_announcement_drafts (
@@ -53,6 +54,19 @@ export function reminderTimes(event, now = Date.now()) {
   return [previousMorning, start - 3600000].filter(t => t > now).map(t => new Date(t).toISOString());
 }
 
+/** Last call LEAD_MINUTES before a timed course, only when there is a link to send. */
+export function linkReminderTime(event, now = Date.now()) {
+  if (!event.time) return null;
+  const due = Date.parse(`${event.date}T${event.time}:00+08:00`) - LEAD_MINUTES * 60000;
+  return due > now ? new Date(due).toISOString() : null;
+}
+
+/** Links for a course: its own description/location first, else the links in the whole notice. */
+export function courseLinks(event, content) {
+  const own = linksIn(`${event.description || ''}\n${event.location || ''}`);
+  return (own.length ? own : linksIn(content)).slice(0, 3);
+}
+
 export const sharedStore = {
   begin(sourceId, userId, inputKey) {
     const previous = sqlite.prepare('SELECT * FROM shared_announcement_drafts WHERE source_id = ? AND user_id = ? AND input_key = ?').get(sourceId, userId, inputKey);
@@ -97,6 +111,13 @@ export const sharedStore = {
         if (mode === 'all') for (const due of (event.deadline ? deadlineReminderTimes(event, now) : reminderTimes(event, now))) {
           sqlite.prepare('INSERT INTO course_reminders (id,draft_id,event_id,source_id,due_at,text) VALUES (?,?,?,?,?,?)')
             .run(randomUUID(), id, eventId, sourceId, due, `${event.deadline ? '⏰ 期限一週前提醒' : '📚 課程提醒'}\n${event.title}\n${event.deadline ? '截止：' : ''}${event.date}${event.time ? ` ${event.time}` : ''}（台灣時間）${event.location ? `\n地點：${event.location}` : ''}${event.description ? `\n${event.description}` : ''}`);
+          reminders++;
+        }
+        const links = mode === 'all' && !event.deadline ? courseLinks(event, draft.content) : [];
+        const lastCall = links.length ? linkReminderTime(event, now) : null;
+        if (lastCall) {
+          sqlite.prepare('INSERT INTO course_reminders (id,draft_id,event_id,source_id,due_at,text) VALUES (?,?,?,?,?,?)')
+            .run(randomUUID(), id, eventId, sourceId, lastCall, `🔔 ${LEAD_MINUTES} 分鐘後開始：${event.title}\n開始：${event.date} ${event.time}（台灣時間）\n\n連結：\n${links.join('\n')}`);
           reminders++;
         }
       }

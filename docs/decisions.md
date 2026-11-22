@@ -54,3 +54,4 @@
 
 - **辨識改用 Qwen3.6（2026-11-02）**：預設與正式環境 `LOCAL_AI_MODELS=qwen3.6`，直接由 Port Monitor 啟動 Qwen3.6，避免先等待 Strata 載入或失敗。Gateway 與既有 Gemini 備援規則維持。
 - **辨識先用 Qwen3.6 官方版（2026-11-19）**：預設與正式環境 `LOCAL_AI_MODELS=qwen3.6-official,qwen3.6`。先由 Port Monitor 啟動官方 Unsloth UD-Q4_K_M（`qwen36-official`），失敗再用 Uncensored 版（`qwen36`），兩者都失敗才送 Gemini。照片不送其他雲端服務。公告整理預設也改為官方版，可在頁面選 Uncensored 或 Strata。
+- **公告上課提醒與可點連結（2026-11-23）**：公告內文的網址在公告目錄可點擊，在 LINE 內以外部瀏覽器開啟（Webex／Teams 可交給 App）。每則公告可對一個群組設定「上課提醒」：開始前 10 分鐘把標題、開始時間與公告內所有連結推播到群組（`note_reminders`，每則公告每群組一筆，開始後不補發，失敗重試至多 5 次）。拍照新增公告時 AI 只在看到明確開始日期與時間時自動設定，並在群組回報，時間有誤可在公告目錄修改或取消；轉傳「整理公告」的課程若有連結，另加上課前 10 分鐘的連結提醒。

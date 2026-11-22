@@ -17,7 +17,7 @@ export const FEATURES = [
   { key: 'dispatch_push', label: 'Case 分配表 07:30 自動推播', hint: '每次依群組人數扣推播額度；關閉時改由上傳的人按「分享分配表到群組」傳送，不扣額度', defaultOn: false },
   { key: 'calendar', label: '行事曆', hint: '「行事曆」「今日行程」「明日行程」', defaultOn: true },
   { key: 'notes', label: '注意事項', hint: '「編輯筆記」；@all 暫存；轉傳文字／檔案／連結後輸入「整理公告」確認建立', defaultOn: true },
-  { key: 'course_reminder', label: '課程／期限提醒', hint: '確認含提醒後，課程前一天 09:00、上課前 1 小時；公告期限前 7 天 09:00 提醒；需開啟注意事項及行事曆', defaultOn: true },
+  { key: 'course_reminder', label: '課程／期限提醒', hint: '確認含提醒後，課程前一天 09:00、上課前 1 小時，有連結的課程上課前 10 分鐘傳連結；公告期限前 7 天 09:00 提醒；需開啟注意事項及行事曆', defaultOn: true },
   { key: 'travel', label: '休假／出國', hint: '「休假」「出國」查詢與登記連結', defaultOn: true },
   { key: 'leave_autoreg', label: '群組休假訊息自動登記', hint: '辨識「姓名 11/4-11/8 請假，代理人代看」並回覆登記結果', defaultOn: false },
   { key: 'duty', label: '值班查詢（MedBase）', hint: '「近期值班」「今天值班」「明天值班」', defaultOn: true },

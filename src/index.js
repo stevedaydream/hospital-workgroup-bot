@@ -14,6 +14,7 @@ import { requireLiffAuth, requireAdminKey } from './auth.js';
 import { verifySignature, handleWebhookEvent, pushMessage, GROUP_WINDOW_MS } from './line.js';
 import { getJobView, getJob, createJob, updateJob, trackModelStage } from './progress.js';
 import { analyzeRoster, isModelLoaded, modelLabel } from './ai.js';
+import { noteReminders, LEAD_MINUTES } from './note-reminders.js';
 import { initializeScheduler, runDailyDispatch, runDailyReminders } from './scheduler.js';
 import { medbaseEnabled, verifyNotifySignature, deliverNotice, DEFAULT_MEDBASE_GROUP, getAttendingRoster, getCachedRoster } from './medbase.js';
 import { mappingDepartment } from './doctor-roster.js';
@@ -276,6 +277,28 @@ app.get('/api/notes/latest', async (c) => {
   } catch (error) {
     return c.json({ error: error.message }, 500);
   }
+});
+
+// "Class starts soon" reminders: LEAD_MINUTES before the start, the notice's
+// title and links are pushed to one group. Only groups the bot is in are valid targets.
+const knownGroup = id => typeof id === 'string' && db.line_groups.getAll().some(g => g.line_group_id === id && !g.left_at);
+app.get('/api/notes/reminders', (c) => {
+  const groupId = c.req.query('groupId') || '';
+  if (!knownGroup(groupId)) return c.json({ leadMinutes: LEAD_MINUTES, reminders: [] });
+  return c.json({ leadMinutes: LEAD_MINUTES, reminders: noteReminders.forGroup(groupId) });
+});
+app.put('/api/notes/:id/reminder', async (c) => {
+  const { groupId, date, time } = await c.req.json().catch(() => ({}));
+  if (!knownGroup(groupId)) return c.json({ error: '請選擇機器人所在的群組' }, 400);
+  try {
+    return c.json(noteReminders.set(c.req.param('id'), groupId, date, time, c.get('displayName')));
+  } catch (error) {
+    return c.json({ error: error.message }, 400);
+  }
+});
+app.delete('/api/notes/:id/reminder', (c) => {
+  const groupId = c.req.query('groupId') || '';
+  return c.json({ removed: noteReminders.remove(c.req.param('id'), groupId) });
 });
 
 // Fetch specific ward note by ID

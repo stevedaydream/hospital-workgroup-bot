@@ -96,6 +96,30 @@
       white-space: pre-wrap;
       margin: 12px 0;
     }
+    .note-link {
+      color: var(--color-teal, #0f766e);
+      text-decoration: underline;
+      overflow-wrap: anywhere;
+      word-break: break-all;
+    }
+    .note-reminder {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin: 0 0 12px;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      font-size: 13px;
+      color: var(--ink);
+      cursor: default;
+    }
+    .note-reminder-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .note-reminder-form input, .note-reminder-form select {
+      min-height: 44px; padding: 6px 8px; font: inherit; border: 1px solid var(--line); border-radius: 8px;
+      background: transparent; color: var(--ink); max-width: 100%;
+    }
+    .note-reminder-form button { min-height: 44px; padding: 6px 12px; font: inherit; border-radius: 8px; border: 1px solid var(--line); background: transparent; color: var(--ink); cursor: pointer; }
     .note-card-meta {
       font-size: 11px;
       color: var(--ink-3);
@@ -321,6 +345,11 @@
     let currentFilter = 'ALL';
     let expandedNoteIds = new Set();
     let notesLiffId = null;
+    // Group that "class starts soon" reminders go to: the group whose link opened the page.
+    let reminderGroupId = window.__linkParam('groupId');
+    let noteReminderMap = {};
+    let reminderLeadMinutes = 10;
+    let lineGroups = null;
     // A shared link (?note=<id>) opens that notice expanded and scrolled into view, once.
     let linkedNoteId = window.__linkParam('note');
     if (linkedNoteId) expandedNoteIds.add(linkedNoteId);
@@ -566,6 +595,11 @@
 
         notesLiffId = config.LIFF_NOTES_ID;
         await liff.init({ liffId: config.LIFF_NOTES_ID });
+        if (!reminderGroupId) {
+          try {
+            reminderGroupId = window.__linkParam('groupId') || (liff.getContext() && liff.getContext().groupId) || '';
+          } catch (e) { /* no group context */ }
+        }
 
         if (liff.isLoggedIn()) window.__setIdToken(liff.getIDToken());
 
@@ -618,6 +652,7 @@
         if (response.ok) {
           allNotes = await response.json();
           renderNotesList();
+          fetchNoteReminders();
         } else {
           document.getElementById('notes-list').innerHTML = '<div style="text-align: center; color: var(--color-rose); padding: 45px;">無法從伺服器取得資料</div>';
         }
@@ -638,7 +673,7 @@
           <article class="review-item" data-review-id="${item.id}">
             <h3>${escapeHtml(item.title)}</h3>
             <p class="review-countdown" data-expires="${escapeHtml(item.expires_at)}" role="timer"></p>
-            <details ${item.draft_content ? '' : 'open'}><summary>原文</summary><p class="review-content">${escapeHtml(item.content)}</p></details>
+            <details ${item.draft_content ? '' : 'open'}><summary>原文</summary><p class="review-content">${linkify(item.content)}</p></details>
             ${item.draft_content ? `<div class="review-draft">
               <p>AI 整理草稿，請核對藥名、劑量、時間與限制後發布。</p>
               <label for="draft-title-${item.id}">草稿標題</label><input id="draft-title-${item.id}" value="${escapeHtml(item.draft_title)}">
@@ -816,7 +851,8 @@
             </div>
             <div class="note-card-body-wrapper">
               <div class="note-card-body-content">
-                <div class="note-card-content">${escapeHtml(note.content)}</div>
+                <div class="note-card-content">${linkify(note.content)}</div>
+                ${note.expired ? '' : reminderHtml(note)}
                 <div class="note-card-meta">
                   <span>👤 更新者：${escapeHtml(note.updated_by)}</span>
                   <span>🕒 更新時間：${dateStr}</span>
@@ -954,6 +990,138 @@
         liff.closeWindow();
       } else {
         alert('請在 LINE 內點選以關閉網頁。');
+      }
+    }
+
+    // Links in a notice open in a browser (or the Webex/Teams app) instead of being plain text.
+    const LINK_RE = /https?:\/\/[^\s<>"'「」『』（）【】，。]+/g;
+    function linkify(text) {
+      if (!text) return '';
+      text = String(text);
+      let html = '';
+      let last = 0;
+      for (const match of text.matchAll(LINK_RE)) {
+        let url = match[0];
+        const trail = url.match(/[.,;:!?。，、；：！？)）\]】」』>]+$/);
+        if (trail) url = url.slice(0, -trail[0].length);
+        html += escapeHtml(text.slice(last, match.index));
+        html += `<a class="note-link" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" onclick="return openNoteLink(event, this.href)">${escapeHtml(url)}</a>`;
+        last = match.index + url.length;
+      }
+      return html + escapeHtml(text.slice(last));
+    }
+
+    function openNoteLink(event, url) {
+      event.stopPropagation();
+      try {
+        // Inside LINE, open in the phone's browser so Webex/Teams links can hand off to their apps.
+        if (window.liff && liff.isInClient && liff.isInClient()) {
+          liff.openWindow({ url, external: true });
+          return false;
+        }
+      } catch (e) { /* fall back to the plain link */ }
+      return true;
+    }
+
+    function taipeiParts(iso) {
+      const s = new Date(iso).toLocaleString('sv-SE', { timeZone: 'Asia/Taipei' });
+      return { date: s.slice(0, 10), time: s.slice(11, 16) };
+    }
+
+    async function fetchNoteReminders() {
+      if (!reminderGroupId) { noteReminderMap = {}; return; }
+      try {
+        const response = await fetch(`/api/notes/reminders?groupId=${encodeURIComponent(reminderGroupId)}`);
+        if (!response.ok) return;
+        const data = await response.json();
+        reminderLeadMinutes = data.leadMinutes || 10;
+        noteReminderMap = Object.fromEntries((data.reminders || []).map(r => [String(r.note_id), r]));
+        renderNotesList();
+      } catch (e) { console.error(e); }
+    }
+
+    let loadingGroups = false;
+    async function loadLineGroups() {
+      if (lineGroups || loadingGroups) return;
+      loadingGroups = true;
+      try {
+        const response = await fetch('/api/line-groups');
+        lineGroups = response.ok ? (await response.json()).filter(g => !g.left_at) : [];
+      } catch { lineGroups = []; }
+      renderNotesList();
+    }
+
+    function chooseReminderGroup(value) {
+      reminderGroupId = value;
+      noteReminderMap = {};
+      fetchNoteReminders();
+    }
+
+    function reminderHtml(note) {
+      const id = String(note.id);
+      if (!reminderGroupId) {
+        if (!lineGroups) { setTimeout(loadLineGroups); return ''; }
+        if (!lineGroups.length) return '';
+        return `<div class="note-reminder" onclick="event.stopPropagation()">
+          <span>🔔 上課提醒：請先選擇要通知的群組</span>
+          <div class="note-reminder-form">
+            <label class="visually-hidden" for="reminder-group-${id}">通知群組</label>
+            <select id="reminder-group-${id}" onchange="chooseReminderGroup(this.value)">
+              <option value="">選擇群組</option>
+              ${lineGroups.map(g => `<option value="${escapeHtml(g.line_group_id)}">${escapeHtml(g.group_name || g.line_group_id)}</option>`).join('')}
+            </select>
+          </div>
+        </div>`;
+      }
+      const r = noteReminderMap[id];
+      const at = r ? taipeiParts(r.start_at) : null;
+      const status = r
+        ? (r.sent_at ? `🔔 已於課前送出連結（${at.date} ${at.time} 開始）`
+          : `🔔 ${at.date} ${at.time} 開始，課前 ${reminderLeadMinutes} 分鐘會把連結傳到群組`)
+        : `🔔 上課提醒：設定開始時間，課前 ${reminderLeadMinutes} 分鐘把公告連結傳到群組`;
+      return `<div class="note-reminder" onclick="event.stopPropagation()">
+        <span role="status">${escapeHtml(status)}</span>
+        <div class="note-reminder-form">
+          <label class="visually-hidden" for="reminder-at-${id}">開始時間</label>
+          <input type="datetime-local" id="reminder-at-${id}" value="${at ? `${at.date}T${at.time}` : ''}">
+          <button type="button" onclick="saveNoteReminder('${id}', this)">${r ? '修改' : '設定提醒'}</button>
+          ${r ? `<button type="button" onclick="clearNoteReminder('${id}', this)">取消提醒</button>` : ''}
+        </div>
+      </div>`;
+    }
+
+    async function saveNoteReminder(id, button) {
+      const value = document.getElementById(`reminder-at-${id}`).value;
+      if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(value)) { showToast('請選擇開始日期與時間', true); return; }
+      button.disabled = true;
+      try {
+        const response = await fetch(`/api/notes/${encodeURIComponent(id)}/reminder`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ groupId: reminderGroupId, date: value.slice(0, 10), time: value.slice(11, 16) })
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.error || '設定失敗');
+        noteReminderMap[String(id)] = result;
+        showToast(`已設定：${value.replace('T', ' ')} 開始，課前 ${reminderLeadMinutes} 分鐘提醒`);
+        renderNotesList();
+      } catch (error) {
+        showToast(error.message, true);
+        button.disabled = false;
+      }
+    }
+
+    async function clearNoteReminder(id, button) {
+      button.disabled = true;
+      try {
+        const response = await fetch(`/api/notes/${encodeURIComponent(id)}/reminder?groupId=${encodeURIComponent(reminderGroupId)}`, { method: 'DELETE' });
+        if (!response.ok) throw new Error('取消失敗');
+        delete noteReminderMap[String(id)];
+        showToast('已取消上課提醒');
+        renderNotesList();
+      } catch (error) {
+        showToast(error.message, true);
+        button.disabled = false;
       }
     }
 

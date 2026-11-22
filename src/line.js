@@ -17,6 +17,7 @@ import { resolveTableDate, normalizeAssignments, correctNpNames, pushSlotPassed 
 import { featureEnabled, disabledFeatureMessage as disabledMessage } from './features.js';
 import { IMAGES_DIR } from './images.js';
 import { CASE_PULL_COMMAND, casePullReply } from './case-pull.js';
+import { autoRemindersForNotes, formatTaipei, LEAD_MINUTES } from './note-reminders.js';
 
 dotenv.config();
 
@@ -835,6 +836,10 @@ async function triggerBatchProcess(sourceId, sessionKey) {
       if (addedNotes.length > 0) {
         const flexNotesCard = getAutoNotesAddedFlex(addedNotes, sourceId);
         resultMessages.push(flexNotesCard);
+        const reminders = autoRemindersForNotes(addedNotes, notes, sourceId);
+        if (reminders.length > 0) {
+          resultMessages.push({ type: 'text', text: `🔔 已設定上課提醒，開始前 ${LEAD_MINUTES} 分鐘會把公告裡的連結傳到本群組：\n${reminders.map(r => `• ${r.note.title}｜${formatTaipei(Date.parse(r.startAt))} 開始`).join('\n')}\n時間有誤可在公告目錄修改或取消：https://liff.line.me/${LIFF_NOTES_ID}?groupId=${sourceId}` });
+        }
       } else if (skipped === 0 && similar.length === 0) {
         resultMessages.push({
           type: "text",

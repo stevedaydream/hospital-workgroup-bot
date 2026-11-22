@@ -7,6 +7,7 @@ import { medbaseEnabled, sendDueReminders, checkPublished } from './medbase.js';
 import { featureEnabled } from './features.js';
 import { signedImageUrl, pruneImages } from './images.js';
 import { runCourseReminders } from './shared-announcement.js';
+import { runNoteReminders } from './note-reminders.js';
 
 dotenv.config();
 
@@ -207,6 +208,10 @@ async function pruneOldImages() {
 export function initializeScheduler() {
   runCourseReminders().catch(error => console.error('[Course reminders]', error.message));
   cron.schedule('* * * * *', () => runCourseReminders().catch(error => console.error('[Course reminders]', error.message)), { timezone: 'Asia/Taipei' });
+  const noteReminderTick = () => runNoteReminders((to, message) => pushMessage(to, [message], '上課提醒'), { enabled: id => featureEnabled(id, 'notes') })
+    .catch(error => console.error('[Note reminders]', error.message));
+  noteReminderTick();
+  cron.schedule('* * * * *', noteReminderTick, { timezone: 'Asia/Taipei' });
   db.note_reviews.pruneExpired();
   cron.schedule('* * * * *', () => db.note_reviews.pruneExpired(), { timezone: 'Asia/Taipei' });
   cron.schedule(

@@ -94,14 +94,20 @@ async function firstAvailable(imageBuffers, prompt, onAttempt, generation) {
         return { parsed: await chatJson(route, model, imageBuffers, prompt, generation), model };
       } catch (error) {
         console.error(`AI Engine [${route.name} ${model} FAILED]:`, error.message);
-        failures.push(`${route.name}/${modelLabel(model)}: ${error.message}`);
         // Nothing is listening (e.g. Port Monitor not started): the other
         // models on this route would fail the same way.
-        if (isUnreachable(error)) break;
+        if (isUnreachable(error)) {
+          failures.push(`${route.name} 沒有開啟（連不上 ${route.baseUrl}）`);
+          break;
+        }
+        // The gateway only knows the models it proxies (not qwen3.6-official);
+        // that is expected, not worth a line in the group message.
+        if (/model_not_found/.test(error.message)) continue;
+        failures.push(`${route.name}/${modelLabel(model)}: ${error.message}`);
       }
     }
   }
-  throw new Error(failures.join('；'));
+  throw new Error(failures.join('；') || `沒有可用的模型（${LOCAL_AI_MODELS.join(', ')}）`);
 }
 
 /**
@@ -178,7 +184,7 @@ export async function organizeSharedAnnouncement(content, today) {
 只抽取明確的課程日期，不得自行推測年份、日期、時間、地點或講師。民國年可換算西元年。
 另外抽取公告中的報名截止、繳交期限、回覆截止、申請截止等明確期限至 deadlines；無期限回傳空陣列。每項期限一筆，最多 20 筆，不可省略。一般課程日期不可當作截止期限；期限不重複放入 events。
 未載年份、只有星期或日期不確定的內容，寫在公告的「待確認事項」，不要放入 events 或 deadlines。
-time 僅填明確開始時間，未載時間留空。每個課程各列一筆，最多 20 筆；超過時回報 error 而不省略。
+time 僅填明確開始時間，未載時間留空。線上課程或會議請把會議連結（含會議號、密碼）完整放進該課程的 description。每個課程各列一筆，最多 20 筆；超過時回報 error 而不省略。
 不要推測提醒時點，不新增醫療指示。content 最多 8000 字，超過請回報 error 而不省略重要事項。
 資料如下：${JSON.stringify(content)}`;
   const { parsed } = await firstAvailable([], prompt, null, { max_tokens: 8000, chat_template_kwargs: { enable_thinking: false } });

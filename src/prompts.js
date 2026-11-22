@@ -25,7 +25,9 @@ For "CASE_TABLE":
 For "WARD_NOTE":
 1. "notes": Array of objects representing notes/announcements found in the image. Each object must have:
    - "title": String. Choose one of the standard category titles: "會診", "藥物", "手術", "檢查" if it matches well. Otherwise, provide a short custom title (2-6 words, e.g., "交班注意事項", "病房清消").
-   - "content": String. The complete instruction or warning details extracted from the image. Keep paragraphs intact.
+   - "content": String. The complete instruction or warning details extracted from the image. Keep paragraphs intact. Copy every URL / meeting link exactly, character by character.
+   - "start_date": String or null. Only when the notice announces a meeting, class, course or lecture with an explicit start date: that date as YYYY-MM-DD (convert ROC years, e.g. 115 -> 2026). Otherwise null.
+   - "start_time": String or null. The explicit start time of that meeting/class as HH:MM (24-hour). Null when no time is printed; never guess.
 
 For "CALENDAR":
 1. "events": Array of objects representing calendar schedule items detected in the image. Each object must have:
@@ -51,7 +53,9 @@ Return the consolidated result as a JSON object containing:
 - type: "WARD_NOTE"
 - notes: Array of objects. Since these are parts of the same meeting/topic, you should merge them into 1 or 2 high-level notes. Each object must have:
   - "title": String. E.g., "晨會公告", "晨會宣導事項" or a specific category.
-  - "content": String. The detailed bulleted list of all summarized points from all the slides/images combined. Keep it in Traditional Chinese.`;
+  - "content": String. The detailed bulleted list of all summarized points from all the slides/images combined. Keep it in Traditional Chinese. Copy every URL / meeting link exactly.
+  - "start_date": String or null. Only when the notice announces a meeting, class, course or lecture with an explicit start date: that date as YYYY-MM-DD (convert ROC years, e.g. 115 -> 2026). Otherwise null.
+  - "start_time": String or null. The explicit start time of that meeting/class as HH:MM (24-hour). Null when no time is printed; never guess.`;
 
 export function normalizeSingleResult(parsed) {
   return {

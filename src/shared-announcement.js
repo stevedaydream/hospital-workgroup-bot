@@ -87,7 +87,7 @@ export function sharedPreview(row) {
     const schedule = due ? new Date(due).toLocaleString('sv-SE', { timeZone: 'Asia/Taipei' }).slice(0, 16) : '一週前時點已過，不補設提醒';
     return `${i + 1}. ${e.title}｜截止 ${e.date}${e.time ? ` ${e.time}` : ''}\n提醒：${schedule}${e.description ? `\n${e.description}` : ''}`;
   }).join('\n') : '未辨識到明確期限。';
-  text += '\n\n提醒規則：課程前一天 09:00、上課前 1 小時；期限前 7 天 09:00。只建立未來時點；期限只有日期也可提醒，課程沒有明確開始時間則不設提醒。\n請核對日期、時間與注意事項；有誤請取消後補充資料重傳。草稿保留 7 天。';
+  text += '\n\n提醒規則：課程前一天 09:00、上課前 1 小時，有線上連結的課程另在上課前 10 分鐘傳送連結；期限前 7 天 09:00。只建立未來時點；期限只有日期也可提醒，課程沒有明確開始時間則不設提醒。\n請核對日期、時間與注意事項；有誤請取消後補充資料重傳。草稿保留 7 天。';
   const messages = [];
   // Bound each message in LINE's UTF-16 length units, avoiding a split surrogate.
   while (text.length) {

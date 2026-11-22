@@ -3,7 +3,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import dotenv from 'dotenv';
 import { db } from './db.js';
-import { offerImage, chooseImage, cancelImages } from './image-choice.js';
+import { offerImage, chooseImage, cancelImages, expectCaseTable, REUPLOAD_MINUTES } from './image-choice.js';
 import { analyzeCaseImage, analyzeMultipleImages, modelLabel, isModelLoaded } from './ai.js';
 import { createJob, updateJob, trackModelStage } from './progress.js';
 import { medbaseCommand, medbaseEnabled, MEDBASE_APP_URL, selfPayCommand, getNpNames } from './medbase.js';
@@ -337,6 +337,18 @@ function getMainMenuFlex(sourceId) {
         ]
       }
     }
+  };
+}
+
+/** Quick reply under a case table result: send the corrected photo straight back to this chat. */
+export function caseReuploadMessage() {
+  return {
+    type: 'text',
+    text: `表有更新？${REUPLOAD_MINUTES} 分鐘內按下方「拍照重傳」或「從相簿重傳」，傳到這裡的下一張圖會直接重新辨識並取代這張。`,
+    quickReply: { items: [
+      { type: 'action', action: { type: 'camera', label: '📷 拍照重傳' } },
+      { type: 'action', action: { type: 'cameraRoll', label: '🖼️ 從相簿重傳' } }
+    ] }
   };
 }
 
@@ -749,6 +761,28 @@ async function sendResult(session, sourceId, messages, reason) {
   session.job.delivered = await pushMessage(session.userId || sourceId, list, reason);
 }
 
+/** Downloads the photos and runs recognition for `sourceId`; the result goes to `userId`. */
+async function startImageJob(replyToken, sourceId, userId, ids, announcementOnly, intro) {
+  const sessionKey = imageSessionKey(sourceId, userId);
+  const job = createJob();
+  await replyMessage(replyToken, { type: 'text', text: `${intro}\n點開查看即時進度與結果：\n${BASE_URL}/progress.html?job=${job.id}` });
+  try {
+    const buffers = [];
+    for (const id of ids) {
+      const buffer = await downloadMessageContent(id);
+      buffers.push(buffer);
+      if (!announcementOnly) await fs.writeFile(path.join(IMAGES_DIR, `${id}.jpg`), buffer);
+    }
+    // Each confirmation gets its own key so parallel jobs cannot overwrite one another.
+    const jobKey = `${sessionKey}:${job.id}`;
+    imageGroupSessions.set(jobKey, { buffers, messageIds: ids, job, announcementOnly, userId });
+    await triggerBatchProcess(sourceId, jobKey);
+  } catch (error) {
+    updateJob(job, { stage: 'failed', error: error.message });
+    await pushMessage(userId, { type: 'text', text: '圖片讀取失敗，請重新傳送並選擇新增公告。' }, '圖片讀取失敗');
+  }
+}
+
 async function triggerBatchProcess(sourceId, sessionKey) {
   const session = imageGroupSessions.get(sessionKey);
   if (!session) return;
@@ -928,6 +962,11 @@ async function triggerBatchProcess(sourceId, sessionKey) {
         const names = new Map(db.line_groups.getAll().map(g => [g.line_group_id, g.group_name]));
         resultMessages.push({ type: 'text', text: `♻️ 這張取代了先前上傳的 ${tableDate} 分配表，以下群組不在新表上，已取消轉發舊圖：\n${[...new Set(dropped)].map(id => `• ${names.get(id) || id}`).join('\n')}` });
       }
+      // The result is sent to the uploader's own chat; a photo sent back there is the corrected table.
+      if (session.userId) {
+        expectCaseTable(session.userId, session.userId, sourceId);
+        resultMessages.push(caseReuploadMessage());
+      }
     } else {
       // --- 🔴 UNKNOWN/OTHER Pipeline ---
       resultMessages.push({
@@ -1008,24 +1047,8 @@ export async function handleWebhookEvent(event) {
       await replyMessage(event.replyToken, choice.message);
       return;
     }
-    const sessionKey = imageSessionKey(sourceId, event.source.userId);
-    const job = createJob();
-    await replyMessage(event.replyToken, { type: 'text', text: `已開始處理 ${choice.ids.length} 張圖片，完成後結果會私訊給按下按鈕的人（需先加「醫院群組助手」為好友）。\n點開查看即時進度與結果：\n${BASE_URL}/progress.html?job=${job.id}` });
-    try {
-      const buffers = [];
-      for (const id of choice.ids) {
-        const buffer = await downloadMessageContent(id);
-        buffers.push(buffer);
-        if (!choice.announcementOnly) await fs.writeFile(path.join(IMAGES_DIR, `${id}.jpg`), buffer);
-      }
-      // Each confirmation gets its own key so parallel jobs cannot overwrite one another.
-      const jobKey = `${sessionKey}:${job.id}`;
-      imageGroupSessions.set(jobKey, { buffers, messageIds: choice.ids, job, announcementOnly: choice.announcementOnly, userId: event.source.userId });
-      await triggerBatchProcess(sourceId, jobKey);
-    } catch (error) {
-      updateJob(job, { stage: 'failed', error: error.message });
-      await pushMessage(event.source.userId, { type: 'text', text: '圖片讀取失敗，請重新傳送並選擇新增公告。' }, '圖片讀取失敗');
-    }
+    await startImageJob(event.replyToken, sourceId, event.source.userId, choice.ids, choice.announcementOnly,
+      `已開始處理 ${choice.ids.length} 張圖片，完成後結果會私訊給按下按鈕的人（需先加「醫院群組助手」為好友）。`);
     return;
   }
 
@@ -1254,7 +1277,11 @@ export async function handleWebhookEvent(event) {
       const sourceId = event.source.groupId || event.source.roomId || event.source.userId;
       if (!featureEnabled(sourceId, 'image_ai') || !event.source.userId) return;
       const prompt = offerImage(sourceId, event.source.userId, message.id);
-      if (prompt) await replyMessage(event.replyToken, prompt);
+      if (prompt?.recognize) {
+        const { ids, targetId } = prompt.recognize;
+        if (!featureEnabled(targetId, 'image_ai')) return;
+        await startImageJob(event.replyToken, targetId, event.source.userId, ids, false, '收到新的分配表，開始重新辨識，會取代先前上傳的同日分配表。');
+      } else if (prompt) await replyMessage(event.replyToken, prompt);
     }
   }
 }

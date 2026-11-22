@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { offerImage, chooseImage } from '../src/image-choice.js';
+import { offerImage, chooseImage, expectCaseTable, REUPLOAD_MINUTES } from '../src/image-choice.js';
 
 test('direct photo upload offers classification separately from forced announcement import', () => {
   const prompt = offerImage('case-chat', 'sender', 'case-table');
@@ -46,5 +46,20 @@ test('single consent is consumed once; multi collects unique IDs and expires', (
   try {
     Date.now = () => now() + 300001;
     assert.equal(chooseImage(expired, 'chat', 'user').ids, undefined);
+  } finally { Date.now = now; }
+});
+
+test('after a case table result the next photo in that chat is re-recognised for the original group, once', () => {
+  expectCaseTable('U-dm', 'U-dm', 'G-ward');
+  assert.ok(offerImage('G-ward', 'U-dm', 'group-photo').quickReply, 'photos in the group still get the normal choice');
+  assert.ok(offerImage('U-dm', 'U-other', 'x').quickReply, 'another user is not affected');
+  assert.deepEqual(offerImage('U-dm', 'U-dm', 'fixed'), { recognize: { ids: ['fixed'], targetId: 'G-ward' } });
+  assert.ok(offerImage('U-dm', 'U-dm', 'later').quickReply, 'only the first photo is taken as the new table');
+
+  expectCaseTable('U-dm2', 'U-dm2', 'G-ward');
+  const now = Date.now;
+  try {
+    Date.now = () => now() + REUPLOAD_MINUTES * 60000 + 1;
+    assert.ok(offerImage('U-dm2', 'U-dm2', 'too-late').quickReply, 'the offer expires');
   } finally { Date.now = now; }
 });

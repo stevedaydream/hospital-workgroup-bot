@@ -106,3 +106,10 @@ test('a re-uploaded table drops the groups it no longer lists, and keeps the one
   assert.equal((await db.daily_dispatch_cache.getForDate('2030-04-02')).length, 1);
   assert.deepEqual(await db.daily_dispatch_cache.dropOtherTables(date, 'new'), []);
 });
+
+test('the case table result offers camera and album quick replies for a corrected photo', async () => {
+  const { caseReuploadMessage } = await import('../src/line.js');
+  const message = caseReuploadMessage();
+  assert.deepEqual(message.quickReply.items.map(i => i.action.type), ['camera', 'cameraRoll']);
+  assert.ok(message.quickReply.items.every(i => i.action.label.length <= 20));
+});

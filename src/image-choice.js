@@ -10,9 +10,25 @@ export function cancelImages(sourceId, userId) {
   for (const [token, item] of pending) if (item.sourceId === sourceId && item.userId === userId) pending.delete(token);
 }
 
+export const REUPLOAD_MINUTES = 30;
+/**
+ * After a case table result, the next photo the user sends in `sourceId` (their
+ * chat with the bot) within REUPLOAD_MINUTES is the corrected table: it is
+ * recognised straight away, filed under the group the first table came from.
+ */
+export function expectCaseTable(sourceId, userId, targetId) {
+  cancelImages(sourceId, userId);
+  const token = randomUUID();
+  pending.set(token, { token, sourceId, userId, targetId, ids: [], expires: Date.now() + REUPLOAD_MINUTES * 60000, mode: 'case-next' });
+}
+
 export function offerImage(sourceId, userId, messageId) {
   for (const [key, item] of pending) if (item.expires <= Date.now()) pending.delete(key);
   let item = [...pending.values()].find(item => item.sourceId === sourceId && item.userId === userId);
+  if (item?.mode === 'case-next') {
+    pending.delete(item.token);
+    return { recognize: { ids: [messageId], targetId: item.targetId } };
+  }
   if (item?.ids.includes(messageId)) return null;
   // Only an explicit multi-image choice may collect subsequent photos.
   // A new photo supersedes an ignored prompt, including its old buttons.

@@ -94,3 +94,15 @@ test('the latest table uploaded for the day is the one given, to every group', a
   const unmapped = await casePullReply('今日 Case', src(third), new Date('2030-03-12T10:00:00+08:00'));
   assert.match(unmapped[1].originalContentUrl, /\/images\/777\.jpg/);
 });
+test('a re-uploaded table drops the groups it no longer lists, and keeps the ones it does', async () => {
+  const date = '2030-04-01';
+  await db.daily_dispatch_cache.add(group, 'old', true, date);
+  await db.daily_dispatch_cache.add(other, 'old', true, date);
+  await db.daily_dispatch_cache.add(third, 'old', true, '2030-04-02'); // another day is untouched
+  await db.daily_dispatch_cache.add(group, 'new', true, date);       // still on the new table
+  assert.deepEqual(await db.daily_dispatch_cache.dropOtherTables(date, 'new'), [other]);
+  const rows = await db.daily_dispatch_cache.getForDate(date);
+  assert.deepEqual(rows.map(r => [r.target_line_group_id, r.source_image_message_id]), [[group, 'new']]);
+  assert.equal((await db.daily_dispatch_cache.getForDate('2030-04-02')).length, 1);
+  assert.deepEqual(await db.daily_dispatch_cache.dropOtherTables(date, 'new'), []);
+});

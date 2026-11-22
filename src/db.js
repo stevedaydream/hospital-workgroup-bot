@@ -618,6 +618,18 @@ export const db = {
         .run(dispatchDate, targetLineGroupId);
     },
 
+    /**
+     * A re-uploaded table replaces the earlier one for its date: groups it no longer
+     * lists would otherwise still get the old photo. Returns the dropped group ids.
+     */
+    async dropOtherTables(dispatchDate, messageId) {
+      const stale = sqlite
+        .prepare('SELECT target_line_group_id FROM daily_dispatch_cache WHERE dispatch_date = ? AND source_image_message_id != ?')
+        .all(dispatchDate, messageId).map(r => r.target_line_group_id);
+      sqlite.prepare('DELETE FROM daily_dispatch_cache WHERE dispatch_date = ? AND source_image_message_id != ?').run(dispatchDate, messageId);
+      return stale;
+    },
+
     /** "清空轉發" -- drop everything not yet delivered (today's leftovers included). */
     async clearAll() {
       sqlite.prepare('DELETE FROM daily_dispatch_cache WHERE dispatch_date >= ?').run(todayInTaipei());

@@ -918,9 +918,16 @@ async function triggerBatchProcess(sourceId, sessionKey) {
         }
       }
 
+      // A re-upload for the same date replaces the earlier table, so groups it no longer lists stop getting the old photo.
+      const dropped = await db.daily_dispatch_cache.dropOtherTables(tableDate, messageId);
+
       // Send feedback response to group
       const flexSummaryCard = getOcrSummaryFlex(dispatchedGroups, hasUro, messageId, sourceId, dateWarning, tableDate);
       resultMessages.push(flexSummaryCard);
+      if (dropped.length > 0) {
+        const names = new Map(db.line_groups.getAll().map(g => [g.line_group_id, g.group_name]));
+        resultMessages.push({ type: 'text', text: `♻️ 這張取代了先前上傳的 ${tableDate} 分配表，以下群組不在新表上，已取消轉發舊圖：\n${[...new Set(dropped)].map(id => `• ${names.get(id) || id}`).join('\n')}` });
+      }
     } else {
       // --- 🔴 UNKNOWN/OTHER Pipeline ---
       resultMessages.push({

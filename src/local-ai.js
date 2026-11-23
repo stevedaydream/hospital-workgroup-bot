@@ -85,6 +85,11 @@ async function chatJson(route, model, imageBuffers, prompt, generation = {}, sig
   return JSON.parse(match ? match[0] : text);
 }
 
+// Qwen3.6 thinks by default. On a case table photo, at temperature 0, it
+// reasons past 16,000 tokens (over 4 minutes) without answering, and Port
+// Monitor cuts it off as a timeout. With thinking off it answers in ~30 s.
+const IMAGE_GENERATION = { max_tokens: 8000, chat_template_kwargs: { enable_thinking: false } };
+
 async function firstAvailable(imageBuffers, prompt, onAttempt, generation) {
   const failures = [];
   for (const route of routes) {
@@ -116,7 +121,7 @@ async function firstAvailable(imageBuffers, prompt, onAttempt, generation) {
  * @param {(model: string) => void} [onAttempt] - called before each model is tried
  */
 export async function analyzeCaseImage(imageBuffer, onAttempt) {
-  const { parsed, model } = await firstAvailable([imageBuffer], SINGLE_IMAGE_PROMPT, onAttempt);
+  const { parsed, model } = await firstAvailable([imageBuffer], SINGLE_IMAGE_PROMPT, onAttempt, IMAGE_GENERATION);
   return { ...normalizeSingleResult(parsed), model };
 }
 
@@ -126,7 +131,7 @@ export async function analyzeCaseImage(imageBuffer, onAttempt) {
  * @param {(model: string) => void} [onAttempt] - called before each model is tried
  */
 export async function analyzeMultipleImages(imageBuffers, onAttempt) {
-  const { parsed, model } = await firstAvailable(imageBuffers, MULTI_IMAGE_PROMPT, onAttempt);
+  const { parsed, model } = await firstAvailable(imageBuffers, MULTI_IMAGE_PROMPT, onAttempt, IMAGE_GENERATION);
   return { ...normalizeMultiResult(parsed), model };
 }
 
@@ -136,7 +141,7 @@ export async function analyzeMultipleImages(imageBuffers, onAttempt) {
  * @param {(model: string) => void} [onAttempt] - called before each model is tried
  */
 export async function analyzeRoster(imageBuffer, onAttempt) {
-  const { parsed, model } = await firstAvailable([imageBuffer], ROSTER_PROMPT, onAttempt);
+  const { parsed, model } = await firstAvailable([imageBuffer], ROSTER_PROMPT, onAttempt, IMAGE_GENERATION);
   return { ...normalizeRosterResult(parsed), model };
 }
 
